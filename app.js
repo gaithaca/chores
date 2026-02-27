@@ -881,7 +881,8 @@ async function loadDashboard(cycleId) {
 // ─── Fine Notification ────────────────────────────────
 
 async function sendFineNotification(netId, memberName, choreName, cycleId, btnEl) {
-    if (!confirm(`Send $40 fine notification to ${memberName} (${netId}) for "${choreName}"?`)) return;
+    const note = prompt(`Fine $40 for ${memberName} (${netId}) — "${choreName}"\n\nEnter justification note:`);
+    if (note === null) return;  // user cancelled
 
     btnEl.disabled = true;
     btnEl.innerHTML = '<span class="loading-spinner"></span>';
@@ -892,7 +893,8 @@ async function sendFineNotification(netId, memberName, choreName, cycleId, btnEl
         chore_name: choreName,
         fine_amount: 40,
         cycle_id: cycleId,
-        granted_by: managerNetId
+        granted_by: managerNetId,
+        note: note || ''
     });
 
     if (res.success) {

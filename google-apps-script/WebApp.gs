@@ -215,6 +215,7 @@ function handleSendFine_(ss, body) {
   const fineAmount = body.fine_amount || 40;
   const cycleId = body.cycle_id || '';
   const grantedBy = body.granted_by || '';
+  const note = String(body.note || '').trim();
 
   if (!netId || !memberName) {
     return { success: false, error: 'Missing net_id or member_name.' };
@@ -232,18 +233,23 @@ function handleSendFine_(ss, body) {
     if (treasurerDiscordId) mentions.push(`<@${treasurerDiscordId}>`);
     const pingLine = mentions.length > 0 ? mentions.join(' ') : '';
 
+    const fields = [
+      { name: 'Chore', value: choreName || 'N/A', inline: true },
+      { name: 'Fine Amount', value: `$${fineAmount}`, inline: true },
+      { name: 'Week Of', value: cycleId || 'N/A', inline: true },
+      { name: 'Issued By', value: grantedBy || 'House Manager', inline: true }
+    ];
+    if (note) {
+      fields.push({ name: 'Justification', value: note, inline: false });
+    }
+
     const payload = {
-      content: pingLine,  // @mentions appear above the embed and trigger notifications
+      content: pingLine,
       embeds: [{
         title: '💸 Chore Fine — $' + fineAmount,
         color: 0xEF4444,
         description: `**${memberName}** (${netId}) has been fined for not completing their chore.`,
-        fields: [
-          { name: 'Chore', value: choreName || 'N/A', inline: true },
-          { name: 'Fine Amount', value: `$${fineAmount}`, inline: true },
-          { name: 'Week Of', value: cycleId || 'N/A', inline: true },
-          { name: 'Issued By', value: grantedBy || 'House Manager', inline: true }
-        ],
+        fields: fields,
         footer: { text: 'ΓΑ Chore Tracker' },
         timestamp: new Date().toISOString()
       }],
@@ -267,12 +273,12 @@ function handleSendFine_(ss, body) {
   let finesSheet = ss.getSheetByName('Fines');
   if (!finesSheet) {
     finesSheet = ss.insertSheet('Fines');
-    finesSheet.appendRow(['id', 'net_id', 'member_name', 'chore_name', 'fine_amount', 'cycle_id', 'granted_by', 'sent_at']);
+    finesSheet.appendRow(['id', 'net_id', 'member_name', 'chore_name', 'fine_amount', 'cycle_id', 'granted_by', 'note', 'sent_at']);
   }
 
   const fineId = Utilities.getUuid();
   finesSheet.appendRow([
-    fineId, netId, memberName, choreName, fineAmount, cycleId, grantedBy, new Date().toISOString()
+    fineId, netId, memberName, choreName, fineAmount, cycleId, grantedBy, note, new Date().toISOString()
   ]);
 
   return { success: true, data: { id: fineId, discord_sent: !!DISCORD_WEBHOOK_URL } };
