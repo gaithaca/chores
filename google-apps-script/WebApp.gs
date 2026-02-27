@@ -28,9 +28,10 @@
 
 // ─── New Sheet Names ──────────────────────────────────
 
-const SUBTASKS_SHEET_NAME = "Subtasks";
-const SUBMISSIONS_SHEET_NAME = "Submissions";
-const EXTENSIONS_SHEET_NAME = "Extensions";
+var SUBTASKS_SHEET_NAME = "Subtasks";
+var SUBMISSIONS_SHEET_NAME = "Submissions";
+var EXTENSIONS_SHEET_NAME = "Extensions";
+var EXT_REQUESTS_SHEET_NAME = "ExtensionRequests";
 
 // ─── Add to custom menu ──────────────────────────────
 
@@ -86,6 +87,15 @@ function doGet(e) {
       case 'getCycleInfo':
         return apiJsonResponse({ success: true, data: computeCycleInfo_(ss) });
 
+      case 'getExtensionRequests': {
+        const reqs = fetchSheetRows_(ss, EXT_REQUESTS_SHEET_NAME);
+        const cycleId = e.parameter.cycle_id;
+        const filtered = cycleId
+          ? reqs.filter(r => normalizeCycleId_(r.cycle_id) === normalizeCycleId_(cycleId))
+          : reqs;
+        return apiJsonResponse({ success: true, data: filtered });
+      }
+
       default:
         return apiJsonResponse({ success: false, error: 'Unknown action: ' + action });
     }
@@ -98,7 +108,7 @@ function doGet(e) {
 
 // ─── Discord Webhook ──────────────────────────────────
 // Set this to your Discord channel's webhook URL
-const DISCORD_WEBHOOK_URL = '';        // e.g. 'https://discord.com/api/webhooks/...'
+// var DISCORD_WEBHOOK_URL = '';          // already set in Code.gs
 
 function doPost(e) {
   try {
@@ -118,6 +128,12 @@ function doPost(e) {
 
       case 'sendFine':
         return apiJsonResponse(handleSendFine_(ss, body));
+
+      case 'requestExtension':
+        return apiJsonResponse(handleRequestExtension_(ss, body));
+
+      case 'approveExtension':
+        return apiJsonResponse(handleApproveExtension_(ss, body));
 
       default:
         return apiJsonResponse({ success: false, error: 'Unknown action: ' + action });
@@ -575,6 +591,107 @@ function handleGrantExtension_(ss, body) {
     granted_at: now.toISOString(),
     reason: body.reason || ''
   };
+}
+
+/**
+ * Handles a resident's extension request.
+ * Creates a row in ExtensionRequests: id | net_id | cycle_id | reason | requested_date | status | requested_at | reviewed_by | reviewed_at
+ */
+function handleRequestExtension_(ss, body) {
+  const netId = String(body.net_id || '').trim();
+  const cycleId = body.cycle_id || '';
+  const reason = String(body.reason || '').trim();
+  const requestedDate = String(body.requested_date || '').trim();
+
+  if (!netId) return { success: false, error: 'Net ID is required.' };
+  if (!reason) return { success: false, error: 'Please provide a reason for the extension.' };
+
+  var sheet = ss.getSheetByName(EXT_REQUESTS_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(EXT_REQUESTS_SHEET_NAME);
+    sheet.appendRow(['id', 'net_id', 'cycle_id', 'reason', 'requested_date', 'status', 'requested_at', 'reviewed_by', 'reviewed_at']);
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const ids = data.slice(1).map(r => parseInt(r[0]) || 0);
+  const id = ids.length > 0 ? Math.max(...ids) + 1 : 1;
+
+  // Check if already requested this cycle
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][1]).trim().toLowerCase() === netId.toLowerCase() &&
+        normalizeCycleId_(data[i][2]) === normalizeCycleId_(cycleId) &&
+        String(data[i][5]).trim().toLowerCase() === 'pending') {
+      return { success: false, error: 'You already have a pending extension request for this week.' };
+    }
+  }
+
+  sheet.appendRow([id, netId, cycleId, reason, requestedDate, 'pending', new Date().toISOString(), '', '']);
+
+  return { success: true, data: { id: id, status: 'pending' } };
+}
+
+/**
+ * Approves or denies an extension request.
+ * body: { request_id, decision ('approved'|'denied'), reviewed_by, extended_deadline (optional override) }
+ * If approved, uses the resident's requested_date as the deadline (or override if provided).
+ */
+function handleApproveExtension_(ss, body) {
+  const requestId = parseInt(body.request_id);
+  const decision = String(body.decision || '').trim().toLowerCase();
+  const reviewedBy = body.reviewed_by || '';
+
+  if (!requestId || !decision) return { success: false, error: 'Missing request_id or decision.' };
+  if (decision !== 'approved' && decision !== 'denied') return { success: false, error: 'Decision must be "approved" or "denied".' };
+
+  var sheet = ss.getSheetByName(EXT_REQUESTS_SHEET_NAME);
+  if (!sheet) return { success: false, error: 'ExtensionRequests sheet not found.' };
+
+  const data = sheet.getDataRange().getValues();
+  var found = false;
+  var reqRow = null;
+
+  // Columns: id(0) | net_id(1) | cycle_id(2) | reason(3) | requested_date(4) | status(5) | requested_at(6) | reviewed_by(7) | reviewed_at(8)
+  for (var i = 1; i < data.length; i++) {
+    if (parseInt(data[i][0]) === requestId) {
+      sheet.getRange(i + 1, 6).setValue(decision);               // status
+      sheet.getRange(i + 1, 8).setValue(reviewedBy);              // reviewed_by
+      sheet.getRange(i + 1, 9).setValue(new Date().toISOString()); // reviewed_at
+      reqRow = data[i];
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) return { success: false, error: 'Extension request not found.' };
+
+  // If approved, create the actual extension using the resident's requested date
+  if (decision === 'approved') {
+    var extDeadline = body.extended_deadline || '';
+    if (!extDeadline) {
+      // Use the resident's requested_date, set to 8AM
+      var reqDate = String(reqRow[4]).trim();
+      if (reqDate) {
+        var d = new Date(reqDate + 'T08:00:00');
+        extDeadline = d.toISOString();
+      } else {
+        // Fallback: +2 days from cycle date
+        var cycleDate = new Date(String(reqRow[2]) + 'T00:00:00');
+        cycleDate.setDate(cycleDate.getDate() + 2);
+        cycleDate.setHours(8, 0, 0, 0);
+        extDeadline = cycleDate.toISOString();
+      }
+    }
+
+    handleGrantExtension_(ss, {
+      net_id: String(reqRow[1]).trim(),
+      cycle_id: reqRow[2],
+      extended_deadline: extDeadline,
+      granted_by: reviewedBy,
+      reason: 'Approved request: ' + String(reqRow[3]).trim()
+    });
+  }
+
+  return { success: true, data: { request_id: requestId, decision: decision } };
 }
 
 // ─── Seed Subtasks ────────────────────────────────────

@@ -544,7 +544,71 @@ async function handleNetIdSubmit() {
         <div class="chore-info-card">
           <div class="chore-name">${chore.name}</div>
           <div class="chore-detail">Assigned to ${user.name} this week</div>
+          <a href="#" class="ext-request-link" id="request-ext-link">Need more time? Request an extension →</a>
+          <div id="ext-request-form" class="hidden" style="margin-top:10px;">
+            <div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
+              <div style="flex:1;min-width:150px;">
+                <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:4px;">Extension until</label>
+                <input type="date" id="ext-req-date" style="width:100%;">
+              </div>
+            </div>
+            <textarea id="ext-req-reason" rows="2" placeholder="Why do you need an extension?" style="width:100%;margin-bottom:8px;"></textarea>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-primary btn-small" id="ext-req-submit">Send Request</button>
+              <button class="btn btn-outline btn-small" id="ext-req-cancel">Cancel</button>
+            </div>
+          </div>
+          <div id="ext-request-status" style="margin-top:6px;font-size:0.82rem;"></div>
         </div>${resubmitNotice}`;
+
+            // Show/hide extension request form
+            const extLink = document.getElementById('request-ext-link');
+            const extForm = document.getElementById('ext-request-form');
+            const extDateInput = document.getElementById('ext-req-date');
+
+            // Default date: 2 days from cycle date
+            const defaultDate = new Date(currentCycleId + 'T00:00:00');
+            defaultDate.setDate(defaultDate.getDate() + 2);
+            extDateInput.value = defaultDate.toISOString().split('T')[0];
+
+            extLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                extLink.classList.add('hidden');
+                extForm.classList.remove('hidden');
+            });
+
+            document.getElementById('ext-req-cancel').addEventListener('click', () => {
+                extForm.classList.add('hidden');
+                extLink.classList.remove('hidden');
+            });
+
+            document.getElementById('ext-req-submit').addEventListener('click', async () => {
+                const reason = document.getElementById('ext-req-reason').value.trim();
+                const requestedDate = extDateInput.value;
+                if (!reason) { alert('Please provide a reason.'); return; }
+                if (!requestedDate) { alert('Please select a date.'); return; }
+
+                const statusEl = document.getElementById('ext-request-status');
+                extForm.classList.add('hidden');
+                statusEl.innerHTML = '<span class="loading-spinner"></span> Sending request...';
+                statusEl.style.color = 'var(--text-secondary)';
+
+                const res = await apiPost('requestExtension', {
+                    net_id: netId,
+                    cycle_id: currentCycleId,
+                    reason: reason,
+                    requested_date: requestedDate
+                });
+
+                if (res.success) {
+                    statusEl.innerHTML = '✓ Extension request sent! Your house manager will review it.';
+                    statusEl.style.color = 'var(--green)';
+                } else {
+                    statusEl.innerHTML = res.error || 'Failed to send request.';
+                    statusEl.style.color = 'var(--cornell-red-light)';
+                    extForm.classList.remove('hidden');
+                }
+            });
             currentChore = chore;
             choreSelectWrapper.classList.add('hidden');
             stepChore.classList.remove('hidden');
@@ -795,16 +859,21 @@ document.getElementById('cycle-current').addEventListener('click', async () => {
 });
 
 async function loadDashboard(cycleId) {
-    const [assignRes, subRes, extRes] = await Promise.all([
+    const [assignRes, subRes, extRes, extReqRes] = await Promise.all([
         apiGet('getAssignments', { cycle_id: cycleId }),
         apiGet('getSubmissions', { cycle_id: cycleId }),
-        apiGet('getExtensions', { cycle_id: cycleId })
+        apiGet('getExtensions', { cycle_id: cycleId }),
+        apiGet('getExtensionRequests', { cycle_id: cycleId })
     ]);
 
-    const residents = appData.members; // Include everyone (house manager also submits chores)
+    const residents = appData.members;
     const assignments = assignRes.success ? assignRes.data : [];
     const submissions = subRes.success ? subRes.data : [];
     const extensions = extRes.success ? extRes.data : [];
+    const extRequests = extReqRes.success ? extReqRes.data : [];
+
+    // Render pending extension requests panel
+    renderExtensionRequests(extRequests, cycleId);
 
     // Stats
     const submitted = submissions.length;
@@ -910,6 +979,77 @@ async function sendFineNotification(netId, memberName, choreName, cycleId, btnEl
     }
 }
 window.sendFineNotification = sendFineNotification;
+
+// ─── Extension Requests Panel ─────────────────────────
+
+function renderExtensionRequests(requests, cycleId) {
+    const container = document.getElementById('ext-requests-panel');
+    if (!container) return;
+
+    const pending = requests.filter(r => String(r.status).trim().toLowerCase() === 'pending');
+
+    if (pending.length === 0) {
+        container.innerHTML = '';
+        container.classList.add('hidden');
+        return;
+    }
+
+    container.classList.remove('hidden');
+    container.innerHTML = `
+        <div class="step-header" style="margin-bottom:12px;">
+            <span class="step-number" style="background:var(--accent);">📋</span>
+            <h2>Extension Requests <span class="badge badge-pending" style="margin-left:8px;">${pending.length} pending</span></h2>
+        </div>
+        ${pending.map(req => {
+        const member = appData.members.find(m => m.net_id === String(req.net_id).trim());
+        const memberName = member ? member.name : req.net_id;
+        const timeAgo = formatDateShort(req.requested_at);
+        const reqDate = req.requested_date ? `<span class="badge badge-extension" style="margin-left:6px;">Until ${req.requested_date}</span>` : '';
+        return `
+            <div class="ext-request-card">
+                <div class="ext-req-info">
+                    <strong>${memberName}</strong> <span style="color:var(--text-muted)">(${req.net_id})</span>${reqDate}
+                    <div class="ext-req-reason">"${req.reason}"</div>
+                    <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">Requested ${timeAgo}</div>
+                </div>
+                <div class="ext-req-actions">
+                    <button class="btn btn-small" style="background:var(--green);color:#fff;" onclick="handleExtReqDecision(${req.id}, 'approved', this)">✓ Approve</button>
+                    <button class="btn btn-small btn-outline" style="color:var(--cornell-red-light);border-color:var(--cornell-red-light);" onclick="handleExtReqDecision(${req.id}, 'denied', this)">✕ Deny</button>
+                </div>
+            </div>`;
+    }).join('')}
+    `;
+}
+
+async function handleExtReqDecision(requestId, decision, btnEl) {
+    const card = btnEl.closest('.ext-request-card');
+    card.style.opacity = '0.5';
+    card.style.pointerEvents = 'none';
+
+    const res = await apiPost('approveExtension', {
+        request_id: requestId,
+        decision: decision,
+        reviewed_by: managerNetId
+    });
+
+    if (res.success) {
+        card.style.transition = 'all 0.3s';
+        card.style.maxHeight = '0';
+        card.style.overflow = 'hidden';
+        card.style.opacity = '0';
+        card.style.margin = '0';
+        card.style.padding = '0';
+        setTimeout(() => card.remove(), 300);
+        showToast(`Extension ${decision}`, decision === 'approved' ? 'success' : 'info');
+        // Refresh dashboard to reflect extension changes
+        await loadDashboard(viewingCycleId);
+    } else {
+        card.style.opacity = '1';
+        card.style.pointerEvents = '';
+        showToast(res.error || 'Failed to process request', 'error');
+    }
+}
+window.handleExtReqDecision = handleExtReqDecision;
 
 // ─── Extension Modal ──────────────────────────────────
 
