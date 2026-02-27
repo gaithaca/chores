@@ -1033,16 +1033,24 @@ async function handleExtReqDecision(requestId, decision, btnEl) {
     });
 
     if (res.success) {
+        // Animate card out
         card.style.transition = 'all 0.3s';
         card.style.maxHeight = '0';
         card.style.overflow = 'hidden';
         card.style.opacity = '0';
         card.style.margin = '0';
         card.style.padding = '0';
-        setTimeout(() => card.remove(), 300);
+        setTimeout(() => {
+            card.remove();
+            // Hide panel if no more cards
+            const panel = document.getElementById('ext-requests-panel');
+            if (panel && !panel.querySelector('.ext-request-card')) {
+                panel.classList.add('hidden');
+            }
+        }, 300);
         showToast(`Extension ${decision}`, decision === 'approved' ? 'success' : 'info');
-        // Refresh dashboard to reflect extension changes
-        await loadDashboard(viewingCycleId);
+        // Delay dashboard reload to let sheet update propagate
+        setTimeout(() => loadDashboard(viewingCycleId), 1500);
     } else {
         card.style.opacity = '1';
         card.style.pointerEvents = '';
