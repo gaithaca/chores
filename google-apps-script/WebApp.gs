@@ -96,6 +96,10 @@ function doGet(e) {
 
 // ─── POST Handler ─────────────────────────────────────
 
+// ─── Discord Webhook ──────────────────────────────────
+// Set this to your Discord channel's webhook URL
+const DISCORD_WEBHOOK_URL = '';        // e.g. 'https://discord.com/api/webhooks/...'
+
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
@@ -111,6 +115,9 @@ function doPost(e) {
 
       case 'verifyManager':
         return apiJsonResponse(verifyManager_(ss, body));
+
+      case 'sendFine':
+        return apiJsonResponse(handleSendFine_(ss, body));
 
       default:
         return apiJsonResponse({ success: false, error: 'Unknown action: ' + action });
@@ -130,15 +137,12 @@ function apiJsonResponse(data) {
 
 /**
  * Normalizes a cycle_id to just "yyyy-MM-dd".
- * Handles: Date objects, ISO strings like "2026-02-23T05:00:00.000Z",
- * and plain "2026-02-23" strings.
  */
 function normalizeCycleId_(val) {
   if (!val) return '';
   if (val instanceof Date && !isNaN(val.getTime())) {
     return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
-  // Extract just the date portion from any string format
   const str = String(val).trim();
   const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
   return match ? match[1] : str;
@@ -148,7 +152,8 @@ function normalizeCycleId_(val) {
 
 /**
  * Reads Members sheet → returns [{net_id, name, email, status, role}]
- * Uses the existing MEMBERS_SHEET constant from Code.gs.
+ * Column layout: A=net_id, B=name, C=email, D=status, E=?, F=role, G=password, H=discord_id
+ * NOTE: password and discord_id are intentionally NOT included in API response
  */
 function fetchMembers_(ss) {
   const sheet = ss.getSheetByName(MEMBERS_SHEET);
@@ -161,17 +166,120 @@ function fetchMembers_(ss) {
     const name = String(row[1]).trim();
     const email = String(row[2]).trim();
     const status = String(row[3]).trim();
-    // Column F (index 5) = role. Default to "resident" if missing.
     const role = row.length > 5 && String(row[5]).trim().toLowerCase() === 'house_manager'
       ? 'house_manager' : 'resident';
-    // NOTE: Column G (index 6) = password — intentionally NOT included in API response
     return { net_id: id, name: name, email: email, status: status, role: role };
   }).filter(m => m.net_id && m.name && (m.status === 'Active' || m.status === 'Visitor'));
 }
 
 /**
+ * Looks up a member's Discord ID from column H (index 7) of the Members sheet.
+ */
+function getDiscordId_(ss, netId) {
+  const sheet = ss.getSheetByName(MEMBERS_SHEET);
+  if (!sheet) return '';
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim().toLowerCase() === netId.toLowerCase()) {
+      return data[i].length > 7 ? String(data[i][7]).trim() : '';
+    }
+  }
+  return '';
+}
+
+/**
+ * Looks up the Discord ID for the member with role='treasurer' in the Members sheet.
+ */
+function getTreasurerDiscordId_(ss) {
+  const sheet = ss.getSheetByName(MEMBERS_SHEET);
+  if (!sheet) return '';
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const role = data[i].length > 5 ? String(data[i][5]).trim().toLowerCase() : '';
+    if (role === 'treasurer') {
+      return data[i].length > 7 ? String(data[i][7]).trim() : '';
+    }
+  }
+  return '';
+}
+
+/**
+ * Sends a fine notification via Discord webhook (with @mentions) and records it.
+ * @mentions the fined member + treasurer using their Discord IDs.
+ * Members sheet column H = discord_id.
+ */
+function handleSendFine_(ss, body) {
+  const netId = String(body.net_id || '').trim();
+  const memberName = String(body.member_name || '').trim();
+  const choreName = String(body.chore_name || '').trim();
+  const fineAmount = body.fine_amount || 40;
+  const cycleId = body.cycle_id || '';
+  const grantedBy = body.granted_by || '';
+
+  if (!netId || !memberName) {
+    return { success: false, error: 'Missing net_id or member_name.' };
+  }
+
+  // Look up Discord IDs from the sheet
+  const memberDiscordId = getDiscordId_(ss, netId);
+  const treasurerDiscordId = getTreasurerDiscordId_(ss);
+
+  // Send Discord notification with @mentions
+  if (DISCORD_WEBHOOK_URL) {
+    // Build @mention pings
+    const mentions = [];
+    if (memberDiscordId) mentions.push(`<@${memberDiscordId}>`);
+    if (treasurerDiscordId) mentions.push(`<@${treasurerDiscordId}>`);
+    const pingLine = mentions.length > 0 ? mentions.join(' ') : '';
+
+    const payload = {
+      content: pingLine,  // @mentions appear above the embed and trigger notifications
+      embeds: [{
+        title: '💸 Chore Fine — $' + fineAmount,
+        color: 0xEF4444,
+        description: `**${memberName}** (${netId}) has been fined for not completing their chore.`,
+        fields: [
+          { name: 'Chore', value: choreName || 'N/A', inline: true },
+          { name: 'Fine Amount', value: `$${fineAmount}`, inline: true },
+          { name: 'Week Of', value: cycleId || 'N/A', inline: true },
+          { name: 'Issued By', value: grantedBy || 'House Manager', inline: true }
+        ],
+        footer: { text: 'ΓΑ Chore Tracker' },
+        timestamp: new Date().toISOString()
+      }],
+      allowed_mentions: { users: [memberDiscordId, treasurerDiscordId].filter(Boolean) }
+    };
+
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+
+    const response = UrlFetchApp.fetch(DISCORD_WEBHOOK_URL, options);
+    if (response.getResponseCode() >= 400) {
+      return { success: false, error: 'Discord webhook failed: ' + response.getContentText() };
+    }
+  }
+
+  // Record the fine in the Fines sheet (create if needed)
+  let finesSheet = ss.getSheetByName('Fines');
+  if (!finesSheet) {
+    finesSheet = ss.insertSheet('Fines');
+    finesSheet.appendRow(['id', 'net_id', 'member_name', 'chore_name', 'fine_amount', 'cycle_id', 'granted_by', 'sent_at']);
+  }
+
+  const fineId = Utilities.getUuid();
+  finesSheet.appendRow([
+    fineId, netId, memberName, choreName, fineAmount, cycleId, grantedBy, new Date().toISOString()
+  ]);
+
+  return { success: true, data: { id: fineId, discord_sent: !!DISCORD_WEBHOOK_URL } };
+}
+
+/**
  * Verifies manager credentials. Reads password from column G of the Members sheet.
- * Returns { success: true/false, error?: string }
  */
 function verifyManager_(ss, body) {
   const netId = String(body.net_id || '').trim().toLowerCase();

@@ -872,10 +872,42 @@ async function loadDashboard(cycleId) {
       <td class="actions-cell">
         ${latestSub ? `<button class="btn btn-view" onclick="viewSubmission('${user.net_id}', '${cycleId}')">Details</button>` : ''}
         ${assignment && !extension ? `<button class="btn btn-extend" onclick="openExtensionModal('${user.net_id}', '${user.name}', '${cycleId}')">Extend</button>` : ''}
+        ${assignment && !latestSub ? `<button class="btn btn-danger btn-small" onclick="sendFineNotification('${user.net_id}', '${user.name.replace(/'/g, "\\'")}', '${chore ? chore.name.replace(/'/g, "\\'") : ''}', '${cycleId}', this)">Fine $40</button>` : ''}
       </td>`;
         tbody.appendChild(tr);
     });
 }
+
+// ─── Fine Notification ────────────────────────────────
+
+async function sendFineNotification(netId, memberName, choreName, cycleId, btnEl) {
+    if (!confirm(`Send $40 fine notification to ${memberName} (${netId}) for "${choreName}"?`)) return;
+
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<span class="loading-spinner"></span>';
+
+    const res = await apiPost('sendFine', {
+        net_id: netId,
+        member_name: memberName,
+        chore_name: choreName,
+        fine_amount: 40,
+        cycle_id: cycleId,
+        granted_by: managerNetId
+    });
+
+    if (res.success) {
+        btnEl.innerHTML = '✓ Sent';
+        btnEl.classList.remove('btn-danger');
+        btnEl.classList.add('btn-outline');
+        btnEl.style.color = 'var(--green)';
+        showToast(`Fine notification sent for ${memberName}`, 'success');
+    } else {
+        btnEl.disabled = false;
+        btnEl.innerHTML = 'Fine $40';
+        showToast(res.error || 'Failed to send fine', 'error');
+    }
+}
+window.sendFineNotification = sendFineNotification;
 
 // ─── Extension Modal ──────────────────────────────────
 
