@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gamma Alpha — Chore Tracker</title>
+    <meta name="description"
+        content="Weekly chore tracking dashboard for Gamma Alpha cooperative house at Cornell University." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <!-- ─── Navigation ─── -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="brand-icon">ΓΑ</span>
+            <span class="brand-text">Gamma Alpha</span>
+        </div>
+        <div class="nav-links">
+            <button class="nav-btn active" data-view="resident" id="nav-resident">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg>
+                Submit Chore
+            </button>
+            <button class="nav-btn" data-view="dashboard" id="nav-dashboard">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                </svg>
+                Dashboard
+            </button>
+        </div>
+    </nav>
+
+    <!-- ─── Resident View ─── -->
+    <main id="resident-view" class="view active">
+        <div class="container">
+            <div class="hero-card glass">
+                <h1>Submit Your Chore</h1>
+                <p class="subtitle">Check off completed subtasks and submit before <strong>Monday 8:00 AM</strong></p>
+
+                <div class="cycle-badge" id="resident-cycle-badge">
+                    <span class="cycle-icon">📅</span>
+                    <span id="resident-cycle-text">Loading cycle...</span>
+                </div>
+            </div>
+
+            <!-- Step 1: Net ID -->
+            <div class="step-card glass" id="step-netid">
+                <div class="step-header">
+                    <span class="step-number">1</span>
+                    <h2>Your Cornell Net ID</h2>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="netid-input" placeholder="e.g. abc12" autocomplete="off"
+                        spellcheck="false" />
+                    <button class="btn btn-primary" id="netid-submit">
+                        Continue
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                    </button>
+                </div>
+                <p class="error-text" id="netid-error"></p>
+            </div>
+
+            <!-- Step 2: Chore Selection -->
+            <div class="step-card glass hidden" id="step-chore">
+                <div class="step-header">
+                    <span class="step-number">2</span>
+                    <h2>Your Assigned Chore</h2>
+                </div>
+                <div id="chore-assignment-info"></div>
+                <div class="select-wrapper hidden" id="chore-select-wrapper">
+                    <select id="chore-select">
+                        <option value="">Select your chore...</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Step 3: Subtask Checklist -->
+            <div class="step-card glass hidden" id="step-subtasks">
+                <div class="step-header">
+                    <span class="step-number">3</span>
+                    <h2>Subtask Checklist</h2>
+                </div>
+                <p class="checklist-note">Check off each task you completed. You may submit a partial completion.</p>
+                <div id="subtask-list" class="subtask-list"></div>
+                <div class="form-group" style="margin-top:14px;">
+                    <label for="submission-note"
+                        style="font-size:0.82rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block;">Note
+                        (optional)</label>
+                    <textarea id="submission-note" rows="2"
+                        placeholder="Any notes for the House Manager, e.g. 'ran out of bleach', 'couldn't mow — too much snow'"></textarea>
+                </div>
+                <div class="submit-section">
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                        <span class="progress-text" id="progress-text">0 / 0 completed</span>
+                    </div>
+                    <button class="btn btn-submit" id="submit-chore" disabled>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                            <polyline points="22 4 12 14.01 9 11.01" />
+                        </svg>
+                        Submit Chore
+                    </button>
+                </div>
+            </div>
+
+            <!-- Confirmation -->
+            <div class="step-card glass hidden" id="step-confirmation">
+                <div class="confirmation-content">
+                    <div class="confirmation-icon" id="confirmation-icon">✅</div>
+                    <h2 id="confirmation-title">Chore Submitted!</h2>
+                    <p id="confirmation-message"></p>
+                    <div class="confirmation-details" id="confirmation-details"></div>
+                    <button class="btn btn-primary" id="submit-another" onclick="resetResidentView()">Submit
+                        Another</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ─── House Manager Dashboard ─── -->
+    <main id="dashboard-view" class="view">
+        <div class="container">
+            <!-- Dashboard Header -->
+            <div class="hero-card glass dashboard-hero">
+                <div class="dashboard-header-row">
+                    <div>
+                        <h1>House Manager Dashboard</h1>
+                        <p class="subtitle">Monitor chore submissions and manage deadlines</p>
+                    </div>
+                    <div class="cycle-badge large" id="dashboard-cycle-badge">
+                        <span class="cycle-icon">📅</span>
+                        <span id="dashboard-cycle-text">Loading...</span>
+                    </div>
+                </div>
+                <div class="deadline-bar" id="deadline-bar">
+                    <div class="deadline-info">
+                        <span class="deadline-label">Deadline:</span>
+                        <span class="deadline-time" id="deadline-time">—</span>
+                    </div>
+                    <div class="deadline-countdown" id="deadline-countdown"></div>
+                </div>
+            </div>
+
+            <!-- Manager Login -->
+            <div class="step-card glass" id="manager-login">
+                <div class="step-header">
+                    <span class="step-number">🔑</span>
+                    <h2>Manager Access</h2>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="manager-netid-input" placeholder="Enter your Manager Net ID"
+                        autocomplete="off" />
+                    <button class="btn btn-primary" id="manager-login-btn">
+                        Access Dashboard
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                    </button>
+                </div>
+                <p class="error-text" id="manager-error"></p>
+            </div>
+
+            <!-- Dashboard Content (hidden until login) -->
+            <div id="dashboard-content" class="hidden">
+                <!-- Stats Row -->
+                <div class="stats-row">
+                    <div class="stat-card glass">
+                        <div class="stat-value" id="stat-total">0</div>
+                        <div class="stat-label">Total Residents</div>
+                    </div>
+                    <div class="stat-card glass">
+                        <div class="stat-value" id="stat-submitted">0</div>
+                        <div class="stat-label">Submitted</div>
+                    </div>
+                    <div class="stat-card glass">
+                        <div class="stat-value stat-late" id="stat-late">0</div>
+                        <div class="stat-label">Late</div>
+                    </div>
+                    <div class="stat-card glass">
+                        <div class="stat-value stat-pending" id="stat-pending">0</div>
+                        <div class="stat-label">Pending</div>
+                    </div>
+                </div>
+
+                <!-- Cycle Selector -->
+                <div class="cycle-selector glass">
+                    <label for="cycle-select">View Cycle:</label>
+                    <input type="text" id="cycle-select" placeholder="e.g. 2026-03-02" />
+                    <button class="btn btn-small" id="cycle-go">Go</button>
+                    <button class="btn btn-small btn-outline" id="cycle-current">Current</button>
+                </div>
+
+                <!-- Submissions Table -->
+                <div class="table-card glass">
+                    <h3>Resident Submissions</h3>
+                    <div class="table-wrapper">
+                        <table id="submissions-table">
+                            <thead>
+                                <tr>
+                                    <th>Resident</th>
+                                    <th>Net ID</th>
+                                    <th>Assigned Chore</th>
+                                    <th>Status</th>
+                                    <th>Submitted At</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="submissions-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ─── Extension Modal ─── -->
+    <div class="modal-overlay hidden" id="extension-modal">
+        <div class="modal glass">
+            <div class="modal-header">
+                <h3>Grant Extension</h3>
+                <button class="modal-close" id="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Granting extension to: <strong id="ext-resident-name">—</strong></p>
+                <div class="form-group">
+                    <label for="ext-deadline">New Deadline</label>
+                    <input type="datetime-local" id="ext-deadline" />
+                </div>
+                <div class="form-group">
+                    <label for="ext-reason">Reason (optional)</label>
+                    <textarea id="ext-reason" rows="3" placeholder="e.g. Midterm week, travel, etc."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="ext-cancel">Cancel</button>
+                <button class="btn btn-primary" id="ext-grant">Grant Extension</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── Subtask Detail Modal ─── -->
+    <div class="modal-overlay hidden" id="detail-modal">
+        <div class="modal glass modal-wide">
+            <div class="modal-header">
+                <h3 id="detail-modal-title">Submission Details</h3>
+                <button class="modal-close" id="detail-modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="detail-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- ─── Toast ─── -->
+    <div id="toast" class="toast hidden"></div>
+
+    <footer class="footer">
+        <p>ΓΑ Gamma Alpha Cooperative · 116 Oak Ave, Ithaca NY</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
