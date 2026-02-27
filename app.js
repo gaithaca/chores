@@ -455,15 +455,28 @@ function updateCycleDisplay() {
     const deadline = new Date(appData.cycleInfo.deadline);
     document.getElementById('deadline-time').textContent = formatDate(appData.cycleInfo.deadline);
 
+    // Also show deadline in resident view
+    const resDeadline = document.getElementById('resident-deadline-time');
+    if (resDeadline) resDeadline.textContent = formatDate(appData.cycleInfo.deadline);
+
     updateCountdown(deadline);
     setInterval(() => updateCountdown(deadline), 60000);
 }
 
 function updateCountdown(deadline) {
-    const el = document.getElementById('deadline-countdown');
     const remaining = getTimeRemaining(deadline);
+
+    // Dashboard countdown
+    const el = document.getElementById('deadline-countdown');
     el.textContent = remaining.text;
     el.className = 'deadline-countdown ' + (remaining.overdue ? 'overdue' : remaining.days < 1 ? 'upcoming' : 'ok');
+
+    // Resident countdown
+    const resEl = document.getElementById('resident-deadline-countdown');
+    if (resEl) {
+        resEl.textContent = remaining.text;
+        resEl.className = 'deadline-countdown ' + (remaining.overdue ? 'overdue' : remaining.days < 1 ? 'upcoming' : 'ok');
+    }
 }
 
 // Helper to find a chore by ID from appData
