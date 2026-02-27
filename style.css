@@ -155,6 +155,15 @@ body::before {
   color: var(--cornell-red-light);
 }
 
+/* ─── View Toggle ─── */
+.view {
+  display: none;
+}
+
+.view.active {
+  display: block;
+}
+
 /* ─── Container ─── */
 .container {
   max-width: 900px;
