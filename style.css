@@ -258,11 +258,13 @@ body::before {
   gap: 10px;
 }
 
-.input-group input[type="text"] {
+.input-group input[type="text"],
+.input-group input[type="password"] {
   flex: 1;
 }
 
 input[type="text"],
+input[type="password"],
 input[type="datetime-local"],
 select,
 textarea {
@@ -288,6 +290,22 @@ textarea:focus {
 input::placeholder,
 textarea::placeholder {
   color: var(--text-muted);
+}
+
+/* Override browser autofill/password-manager styling */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-primary);
+  -webkit-box-shadow: 0 0 0 1000px rgba(22, 22, 35, 1) inset;
+  border: 1px solid var(--border-subtle);
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+input[type="password"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
 }
 
 .error-text {

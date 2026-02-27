@@ -68,14 +68,18 @@ function doGet(e) {
       case 'getSubmissions': {
         const subs = fetchSheetRows_(ss, SUBMISSIONS_SHEET_NAME);
         const cycleId = e.parameter.cycle_id;
-        const filtered = cycleId ? subs.filter(s => String(s.cycle_id).trim() === cycleId) : subs;
+        const filtered = cycleId
+          ? subs.filter(s => normalizeCycleId_(s.cycle_id) === normalizeCycleId_(cycleId))
+          : subs;
         return apiJsonResponse({ success: true, data: filtered });
       }
 
       case 'getExtensions': {
         const exts = fetchSheetRows_(ss, EXTENSIONS_SHEET_NAME);
         const cycleId = e.parameter.cycle_id;
-        const filtered = cycleId ? exts.filter(ex => String(ex.cycle_id).trim() === cycleId) : exts;
+        const filtered = cycleId
+          ? exts.filter(ex => normalizeCycleId_(ex.cycle_id) === normalizeCycleId_(cycleId))
+          : exts;
         return apiJsonResponse({ success: true, data: filtered });
       }
 
@@ -105,6 +109,9 @@ function doPost(e) {
       case 'grantExtension':
         return apiJsonResponse({ success: true, data: handleGrantExtension_(ss, body) });
 
+      case 'verifyManager':
+        return apiJsonResponse(verifyManager_(ss, body));
+
       default:
         return apiJsonResponse({ success: false, error: 'Unknown action: ' + action });
     }
@@ -119,6 +126,22 @@ function apiJsonResponse(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Normalizes a cycle_id to just "yyyy-MM-dd".
+ * Handles: Date objects, ISO strings like "2026-02-23T05:00:00.000Z",
+ * and plain "2026-02-23" strings.
+ */
+function normalizeCycleId_(val) {
+  if (!val) return '';
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  // Extract just the date portion from any string format
+  const str = String(val).trim();
+  const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : str;
 }
 
 // ─── Data Fetchers ────────────────────────────────────
@@ -141,8 +164,46 @@ function fetchMembers_(ss) {
     // Column F (index 5) = role. Default to "resident" if missing.
     const role = row.length > 5 && String(row[5]).trim().toLowerCase() === 'house_manager'
       ? 'house_manager' : 'resident';
+    // NOTE: Column G (index 6) = password — intentionally NOT included in API response
     return { net_id: id, name: name, email: email, status: status, role: role };
   }).filter(m => m.net_id && m.name && (m.status === 'Active' || m.status === 'Visitor'));
+}
+
+/**
+ * Verifies manager credentials. Reads password from column G of the Members sheet.
+ * Returns { success: true/false, error?: string }
+ */
+function verifyManager_(ss, body) {
+  const netId = String(body.net_id || '').trim().toLowerCase();
+  const password = String(body.password || '');
+  if (!netId || !password) {
+    return { success: false, error: 'Net ID and password are required.' };
+  }
+
+  const sheet = ss.getSheetByName(MEMBERS_SHEET);
+  if (!sheet) return { success: false, error: 'Members sheet not found.' };
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    const rowId = String(data[i][0]).trim().toLowerCase();
+    const role = data[i].length > 5 ? String(data[i][5]).trim().toLowerCase() : '';
+    const storedPw = data[i].length > 6 ? String(data[i][6]).trim() : '';
+
+    if (rowId === netId) {
+      if (role !== 'house_manager') {
+        return { success: false, error: 'This account does not have manager access.' };
+      }
+      if (!storedPw) {
+        return { success: false, error: 'No password set for this account. Add one in column G of the Members sheet.' };
+      }
+      if (storedPw === password) {
+        return { success: true };
+      } else {
+        return { success: false, error: 'Incorrect password.' };
+      }
+    }
+  }
+  return { success: false, error: 'Net ID not found.' };
 }
 
 /**
@@ -250,7 +311,21 @@ function fetchSheetRows_(ss, sheetName) {
   const headers = data[0].map(h => String(h).trim());
   return data.slice(1).map(row => {
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = row[i]; });
+    headers.forEach((h, i) => {
+      let val = row[i];
+      // Google Sheets auto-converts date-like strings to Date objects.
+      // Normalize them back to strings so filtering/comparisons work.
+      if (val instanceof Date && !isNaN(val.getTime())) {
+        // Date-only columns (cycle_id) → yyyy-MM-dd
+        // Datetime columns (submitted_at, extended_deadline, granted_at) → ISO string
+        if (h === 'cycle_id') {
+          val = Utilities.formatDate(val, Session.getScriptTimeZone(), "yyyy-MM-dd");
+        } else {
+          val = val.toISOString();
+        }
+      }
+      obj[h] = val;
+    });
     return obj;
   });
 }
@@ -288,9 +363,9 @@ function computeCycleInfo_(ss) {
     assignmentWeek = Utilities.formatDate(monday, Session.getScriptTimeZone(), "yyyy-MM-dd");
   }
 
-  // Deadline = "Week Of" + 7 days at 8:00 AM
+  // Deadline = "Week Of" date at 8:00 AM
   const weekOfDate = new Date(assignmentWeek + "T00:00:00");
-  const deadlineDate = new Date(weekOfDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const deadlineDate = new Date(weekOfDate);
   deadlineDate.setHours(8, 0, 0, 0);
 
   return {
@@ -309,9 +384,9 @@ function handleSubmitChore_(ss, body) {
   const now = new Date();
   const cycleId = body.cycle_id;
 
-  // Compute deadline
+  // Compute deadline — same as the week-of date at 8 AM
   const weekOfDate = new Date(cycleId + "T00:00:00");
-  const deadline = new Date(weekOfDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const deadline = new Date(weekOfDate);
   deadline.setHours(8, 0, 0, 0);
 
   // Check if late

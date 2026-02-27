@@ -284,7 +284,6 @@ async function apiPost(action, body) {
     try {
         const res = await fetch(API_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action, ...body })
         });
         return await res.json();
@@ -723,26 +722,43 @@ window.resetResidentView = resetResidentView;
 
 const managerLoginBtn = document.getElementById('manager-login-btn');
 const managerNetIdInput = document.getElementById('manager-netid-input');
+const managerPasswordInput = document.getElementById('manager-password-input');
 const managerError = document.getElementById('manager-error');
 
 managerLoginBtn.addEventListener('click', handleManagerLogin);
-managerNetIdInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleManagerLogin(); });
+managerNetIdInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') managerPasswordInput.focus(); });
+managerPasswordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleManagerLogin(); });
 
 async function handleManagerLogin() {
     const netId = managerNetIdInput.value.trim().toLowerCase();
+    const password = managerPasswordInput.value;
     if (!netId) {
         managerError.textContent = 'Please enter your Net ID.';
+        return;
+    }
+    if (!password) {
+        managerError.textContent = 'Please enter your password.';
         return;
     }
 
     managerError.textContent = '';
     managerLoginBtn.innerHTML = '<span class="loading-spinner"></span>';
 
-    const user = appData.members.find(u => u.net_id === netId);
-    if (!user || user.role !== 'house_manager') {
-        managerError.textContent = 'Access denied. This Net ID does not have House Manager privileges.';
-        managerLoginBtn.innerHTML = 'Access Dashboard <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
-        return;
+    // Verify credentials server-side (demo mode: accept 'demo' as password)
+    if (DEMO_MODE) {
+        const user = appData.members.find(u => u.net_id === netId);
+        if (!user || user.role !== 'house_manager' || password !== 'demo') {
+            managerError.textContent = 'Invalid credentials. (Demo password is "demo")';
+            managerLoginBtn.innerHTML = 'Access Dashboard <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+            return;
+        }
+    } else {
+        const verifyRes = await apiPost('verifyManager', { net_id: netId, password: password });
+        if (!verifyRes.success) {
+            managerError.textContent = verifyRes.error || 'Invalid credentials.';
+            managerLoginBtn.innerHTML = 'Access Dashboard <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+            return;
+        }
     }
 
     managerNetId = netId;
