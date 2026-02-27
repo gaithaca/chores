@@ -421,6 +421,9 @@ function switchView(view) {
 
 // ─── Initialization ───────────────────────────────────
 
+let appReadyResolve;
+const appReady = new Promise(resolve => { appReadyResolve = resolve; });
+
 async function initApp() {
     if (DEMO_MODE) {
         initDemoData();
@@ -439,6 +442,7 @@ async function initApp() {
 
     currentCycleId = appData.cycleInfo ? appData.cycleInfo.cycle_id : '';
     updateCycleDisplay();
+    appReadyResolve(); // Signal that data is loaded
 }
 
 function updateCycleDisplay() {
@@ -500,6 +504,9 @@ async function handleNetIdSubmit() {
 
     netidError.textContent = '';
     netidSubmit.innerHTML = '<span class="loading-spinner"></span>';
+
+    // Wait for app data to load (handles race condition on first visit)
+    await appReady;
 
     // Find user in loaded data
     const user = appData.members.find(u => u.net_id === netId);
@@ -743,6 +750,9 @@ async function handleManagerLogin() {
 
     managerError.textContent = '';
     managerLoginBtn.innerHTML = '<span class="loading-spinner"></span>';
+
+    // Wait for app data to load (handles race condition on first visit)
+    await appReady;
 
     // Verify credentials server-side (demo mode: accept 'demo' as password)
     if (DEMO_MODE) {
