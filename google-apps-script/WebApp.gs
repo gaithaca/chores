@@ -669,13 +669,29 @@ function handleApproveExtension_(ss, body) {
     var extDeadline = body.extended_deadline || '';
     if (!extDeadline) {
       // Use the resident's requested_date, set to 8AM
-      var reqDate = String(reqRow[4]).trim();
-      if (reqDate) {
-        var d = new Date(reqDate + 'T08:00:00');
-        extDeadline = d.toISOString();
-      } else {
-        // Fallback: +2 days from cycle date
-        var cycleDate = new Date(String(reqRow[2]) + 'T00:00:00');
+      var rawReqDate = reqRow[4];
+      if (rawReqDate) {
+        var d;
+        if (rawReqDate instanceof Date) {
+          d = new Date(rawReqDate);
+        } else {
+          // It's a string like "2026-03-01"
+          d = new Date(String(rawReqDate).trim() + 'T08:00:00');
+        }
+        if (!isNaN(d.getTime())) {
+          d.setHours(8, 0, 0, 0);
+          extDeadline = d.toISOString();
+        }
+      }
+      // Fallback if requested_date was empty or invalid
+      if (!extDeadline) {
+        var rawCycleDate = reqRow[2];
+        var cycleDate;
+        if (rawCycleDate instanceof Date) {
+          cycleDate = new Date(rawCycleDate);
+        } else {
+          cycleDate = new Date(String(rawCycleDate).trim() + 'T00:00:00');
+        }
         cycleDate.setDate(cycleDate.getDate() + 2);
         cycleDate.setHours(8, 0, 0, 0);
         extDeadline = cycleDate.toISOString();
