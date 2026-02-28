@@ -546,7 +546,7 @@ async function handleNetIdSubmit() {
     if (userSubmissions.length > 0) {
         const count = userSubmissions.length;
         resubmitNotice = `<div class="chore-info-card" style="border-left:3px solid var(--accent); margin-top:10px; padding:10px 14px;">
-          <div style="font-size:0.82rem; color:var(--text-secondary);">📝 You have <strong>${count}</strong> previous submission${count > 1 ? 's' : ''} this week. Submitting again will add a new record (previous submissions are kept).</div>
+          <div style="font-size:0.82rem; color:var(--text-secondary);">📝 You have <strong>${count}</strong> previous submission${count > 1 ? 's' : ''} this week. Previously completed subtasks are <strong>pre-checked</strong> below — just check off any new items and submit again.</div>
         </div>`;
     }
 
@@ -625,7 +625,7 @@ async function handleNetIdSubmit() {
             currentChore = chore;
             choreSelectWrapper.classList.add('hidden');
             stepChore.classList.remove('hidden');
-            loadSubtasks(chore);
+            loadSubtasks(chore, userSubmissions);
         }
     } else {
         // Not assigned — let them pick a chore
@@ -665,7 +665,7 @@ choreSelect.addEventListener('change', () => {
     }
 });
 
-function loadSubtasks(chore) {
+function loadSubtasks(chore, previousSubmissions = []) {
     subtaskList.innerHTML = '';
 
     if (!chore.subtasks || chore.subtasks.length === 0) {
@@ -675,9 +675,33 @@ function loadSubtasks(chore) {
         return;
     }
 
+    // Merge previous subtask checks (OR-merge: if ANY submission checked item N, pre-check it)
+    const mergedChecks = new Array(chore.subtasks.length).fill(false);
+    previousSubmissions.forEach(sub => {
+        try {
+            const checks = typeof sub.subtasks_checked_json === 'string'
+                ? JSON.parse(sub.subtasks_checked_json)
+                : sub.subtasks_checked_json;
+            if (Array.isArray(checks)) {
+                checks.forEach((val, i) => {
+                    if (val && i < mergedChecks.length) mergedChecks[i] = true;
+                });
+            }
+        } catch (e) { /* ignore parse errors */ }
+    });
+
+    // Pre-fill notes by combining previous notes
+    const previousNotes = previousSubmissions
+        .map(s => (s.note || '').trim())
+        .filter(n => n.length > 0);
+    const noteField = document.getElementById('submission-note');
+    if (noteField && previousNotes.length > 0) {
+        noteField.value = previousNotes.join(' | ');
+    }
+
     chore.subtasks.forEach((task, idx) => {
         const item = document.createElement('div');
-        item.className = 'subtask-item';
+        item.className = 'subtask-item' + (mergedChecks[idx] ? ' checked' : '');
         item.dataset.index = idx;
         item.innerHTML = `
       <div class="subtask-checkbox"></div>
