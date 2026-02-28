@@ -135,6 +135,9 @@ function doPost(e) {
       case 'approveExtension':
         return apiJsonResponse(handleApproveExtension_(ss, body));
 
+      case 'reviewSubmission':
+        return apiJsonResponse(handleReviewSubmission_(ss, body));
+
       default:
         return apiJsonResponse({ success: false, error: 'Unknown action: ' + action });
     }
@@ -710,6 +713,41 @@ function handleApproveExtension_(ss, body) {
   }
 
   return { success: true, data: { request_id: requestId, decision: decision } };
+}
+
+// ─── Manager Submission Review ────────────────────────
+/**
+ * Saves a manager's review of a submission.
+ * body: { submission_id, review_checks (array of booleans), review_reason, reviewed_by }
+ * Writes to columns 9 (manager_review_json) and 10 (review_reason) of the Submissions sheet.
+ */
+function handleReviewSubmission_(ss, body) {
+  const submissionId = parseInt(body.submission_id);
+  if (!submissionId) return { success: false, error: 'Missing submission_id.' };
+
+  var sheet = ss.getSheetByName(SUBMISSIONS_SHEET_NAME);
+  if (!sheet) return { success: false, error: 'Submissions sheet not found.' };
+
+  const data = sheet.getDataRange().getValues();
+  var found = false;
+
+  // Submissions columns: id(0) | net_id(1) | chore_id(2) | subtasks_checked_json(3) | submitted_at(4) | cycle_id(5) | is_late(6) | note(7) | manager_review_json(8) | review_reason(9)
+  for (var i = 1; i < data.length; i++) {
+    if (parseInt(data[i][0]) === submissionId) {
+      var reviewJson = JSON.stringify(body.review_checks || []);
+      var reviewReason = String(body.review_reason || '').trim();
+      var reviewedBy = String(body.reviewed_by || '').trim();
+      // Combine reviewed_by into the reason for traceability
+      var fullReason = reviewedBy ? '[' + reviewedBy + '] ' + reviewReason : reviewReason;
+      sheet.getRange(i + 1, 9).setValue(reviewJson);     // manager_review_json
+      sheet.getRange(i + 1, 10).setValue(fullReason);     // review_reason
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) return { success: false, error: 'Submission not found.' };
+  return { success: true, data: { submission_id: submissionId } };
 }
 
 // ─── Seed Subtasks ────────────────────────────────────

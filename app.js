@@ -1228,6 +1228,19 @@ async function viewSubmission(netId, cycleId) {
         const checkedCount = checked.filter(Boolean).length;
         const isLate = parseInt(submission.is_late) === 1;
 
+        // Parse existing manager review if any
+        let managerReview = [];
+        const rawReview = submission.manager_review_json;
+        if (rawReview) {
+            if (typeof rawReview === 'string') {
+                try { managerReview = JSON.parse(rawReview); } catch { managerReview = []; }
+            } else if (Array.isArray(rawReview)) {
+                managerReview = rawReview;
+            }
+        }
+        const hasExistingReview = managerReview.length > 0;
+        const existingReviewReason = submission.review_reason || '';
+
         // Add a separator between multiple submissions
         if (subIdx > 0) {
             html += '<hr style="border:none; border-top:1px solid rgba(255,255,255,0.08); margin:20px 0;">';
@@ -1240,22 +1253,36 @@ async function viewSubmission(netId, cycleId) {
       ${label ? `<span style="font-weight:600; font-size:0.82rem; color:var(--text-secondary);">${label}</span>` : ''}
       <span class="badge ${isLate ? 'badge-late' : 'badge-submitted'}">${isLate ? 'Late' : '✓ On Time'}</span>
       ${isLate ? '<span class="fine-badge">$40 Fine</span>' : ''}
+      ${hasExistingReview ? '<span class="badge" style="background:var(--accent);color:#fff;">Reviewed</span>' : ''}
       <span style="color:var(--text-muted); font-size:0.82rem;">
         Submitted: ${formatDate(submission.submitted_at)} · ${checkedCount}/${chore.subtasks.length} subtasks
       </span>
     </div>
-    <ul class="detail-subtask-list">`;
+
+    <table class="review-table" data-sub-id="${submission.id}" style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+      <thead>
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+          <th style="text-align:left; padding:8px; color:var(--text-muted); font-weight:600;">Subtask</th>
+          <th style="text-align:center; padding:8px; color:var(--text-muted); font-weight:600; width:70px;">Resident</th>
+          <th style="text-align:center; padding:8px; color:var(--accent); font-weight:600; width:90px;">Manager ✓</th>
+        </tr>
+      </thead>
+      <tbody>`;
 
         chore.subtasks.forEach((task, i) => {
-            const done = checked[i];
+            const residentDone = checked[i];
+            const mgrChecked = hasExistingReview ? managerReview[i] === true : residentDone;
             html += `
-      <li class="detail-subtask-item">
-        <span class="detail-check ${done ? 'done' : 'not-done'}">${done ? '✅' : '⬜'}</span>
-        <span>${task}</span>
-      </li>`;
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+          <td style="padding:8px; color:var(--text-primary);">${task}</td>
+          <td style="text-align:center; padding:8px;">${residentDone ? '✅' : '⬜'}</td>
+          <td style="text-align:center; padding:8px;">
+            <input type="checkbox" name="review-${submission.id}-${i}" ${mgrChecked ? 'checked' : ''} style="cursor:pointer; width:18px; height:18px; accent-color:var(--green);">
+          </td>
+        </tr>`;
         });
 
-        html += '</ul>';
+        html += `</tbody></table>`;
 
         // Show note if present
         const note = submission.note || '';
@@ -1265,36 +1292,64 @@ async function viewSubmission(netId, cycleId) {
           <div style="font-size:0.88rem; color:var(--text-secondary); font-style:italic;">${note}</div>
         </div>`;
         }
-    });
 
-    // Add fine button at the bottom of the review modal
-    const checkedTotal = userSubs.reduce((acc, sub) => {
-        let c;
-        const raw = sub.subtasks_checked_json || sub.subtasks_checked;
-        if (typeof raw === 'string') {
-            try { c = JSON.parse(raw); } catch { c = []; }
-        } else if (Array.isArray(raw)) { c = raw; } else { c = []; }
-        return { done: Math.max(acc.done, c.filter(Boolean).length), total: chore.subtasks.length };
-    }, { done: 0, total: chore.subtasks.length });
-
-    const incomplete = checkedTotal.total - checkedTotal.done;
-    if (incomplete > 0) {
-        const escapedName = (user ? user.name : netId).replace(/'/g, "\\'");
-        const escapedChore = chore.name.replace(/'/g, "\\'");
-        html += `
-    <div style="margin-top:20px; padding:14px 16px; background:rgba(212, 72, 72, 0.08); border:1px solid rgba(212, 72, 72, 0.25); border-radius:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-      <div>
-        <div style="font-weight:600; color:var(--cornell-red-light); font-size:0.88rem;">⚠️ ${incomplete} of ${checkedTotal.total} subtasks incomplete</div>
-        <div style="font-size:0.78rem; color:var(--text-muted); margin-top:2px;">Fine this resident if the chore was not completed satisfactorily.</div>
+        // Review reason + Save button (only for the latest submission)
+        if (subIdx === 0) {
+            const escapedName = (user ? user.name : netId).replace(/'/g, "\\'");
+            const escapedChore = chore.name.replace(/'/g, "\\'");
+            html += `
+    <div style="margin-top:16px; padding:14px 16px; background:rgba(255,255,255,0.03); border-radius:10px; border:1px solid rgba(255,255,255,0.08);">
+      <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:6px;">Manager Review Notes (optional)</label>
+      <textarea id="review-reason-input" rows="2" placeholder="e.g. Bathroom floor still dirty, trash not taken out..." style="width:100%; margin-bottom:10px; font-size:0.85rem;">${existingReviewReason.replace(/^\[.*?\]\s*/, '')}</textarea>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <button class="btn btn-primary btn-small" id="save-review-btn" onclick="saveManagerReview(${submission.id}, ${chore.subtasks.length})">💾 Save Review</button>
+        <button class="btn btn-danger btn-small" onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', this)">Fine $40</button>
+        <span id="review-save-status" style="font-size:0.82rem;"></span>
       </div>
-      <button class="btn btn-danger btn-small" id="modal-fine-btn" onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', this)">Fine $40</button>
     </div>`;
-    }
+        }
+    });
 
     document.getElementById('detail-modal-body').innerHTML = html;
     document.getElementById('detail-modal').classList.remove('hidden');
 }
 window.viewSubmission = viewSubmission;
+
+async function saveManagerReview(submissionId, subtaskCount) {
+    const reviewChecks = [];
+    for (let i = 0; i < subtaskCount; i++) {
+        const cb = document.querySelector(`input[name="review-${submissionId}-${i}"]`);
+        reviewChecks.push(cb ? cb.checked : false);
+    }
+
+    const reviewReason = document.getElementById('review-reason-input').value.trim();
+    const btn = document.getElementById('save-review-btn');
+    const statusEl = document.getElementById('review-save-status');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Saving...';
+    statusEl.textContent = '';
+
+    const res = await apiPost('reviewSubmission', {
+        submission_id: submissionId,
+        review_checks: reviewChecks,
+        review_reason: reviewReason,
+        reviewed_by: managerNetId
+    });
+
+    if (res.success) {
+        btn.innerHTML = '💾 Save Review';
+        btn.disabled = false;
+        statusEl.innerHTML = '<span style="color:var(--green);">✓ Review saved</span>';
+        showToast('Review saved successfully', 'success');
+    } else {
+        btn.innerHTML = '💾 Save Review';
+        btn.disabled = false;
+        statusEl.innerHTML = `<span style="color:var(--cornell-red-light);">${res.error || 'Failed to save'}</span>`;
+        showToast(res.error || 'Failed to save review', 'error');
+    }
+}
+window.saveManagerReview = saveManagerReview;
 
 async function modalFine(netId, memberName, choreName, cycleId, btnEl) {
     const note = prompt(`Fine $40 for ${memberName} — "${choreName}"\n\nReason (e.g. "chore not actually completed"):`, 'Chore not completed satisfactorily');
