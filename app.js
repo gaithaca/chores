@@ -509,16 +509,25 @@ function buildExtRequestStatusHTML(requests) {
             bgColor = 'rgba(234, 179, 8, 0.1)'; borderColor = 'rgba(234, 179, 8, 0.3)';
         }
 
-        const dateInfo = req.requested_date ? ` until <strong>${req.requested_date}</strong>` : '';
+        const dateInfo = req.requested_date ? ` until <strong>${formatDateOnly(req.requested_date)}</strong>` : '';
         const reviewReason = req.review_reason ? `<div style="margin-top:4px;font-style:italic;color:var(--text-secondary);">"${req.review_reason}"</div>` : '';
-        const reviewedBy = req.reviewed_by && status !== 'pending' ? `<span style="color:var(--text-muted);"> — reviewed by ${req.reviewed_by}</span>` : '';
+        const reviewedAt = req.reviewed_at && status !== 'pending' ? ` on ${formatDateShort(req.reviewed_at)}` : '';
+        const reviewedBy = req.reviewed_by && status !== 'pending' ? `<span style="color:var(--text-muted);"> — reviewed by ${req.reviewed_by}${reviewedAt}</span>` : '';
 
         return `<div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:${bgColor};border:1px solid ${borderColor};font-size:0.82rem;">
             <span style="font-weight:600;color:${color};">${icon} Extension ${label}</span>${dateInfo}${reviewedBy}
-            ${req.reason ? `<div style="margin-top:2px;color:var(--text-secondary);">Reason: "${req.reason}"</div>` : ''}
+            ${req.reason ? `<div style="margin-top:2px;color:var(--text-secondary);">Your reason: "${req.reason}"</div>` : ''}
             ${reviewReason}
         </div>`;
     }).join('');
+}
+
+// Format a date string like "2026-03-01" into "Wed, Mar 1"
+function formatDateOnly(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return String(dateStr);
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 // ─── Resident View ────────────────────────────────────
@@ -1077,7 +1086,7 @@ function renderExtensionRequests(requests, cycleId) {
         const member = appData.members.find(m => m.net_id === String(req.net_id).trim());
         const memberName = member ? member.name : req.net_id;
         const timeAgo = formatDateShort(req.requested_at);
-        const reqDate = req.requested_date ? `<span class="badge badge-extension" style="margin-left:6px;">Until ${req.requested_date}</span>` : '';
+        const reqDate = req.requested_date ? `<span class="badge badge-extension" style="margin-left:6px;">Until ${formatDateOnly(req.requested_date)}</span>` : '';
         return `
             <div class="ext-request-card">
                 <div class="ext-req-info">
