@@ -941,18 +941,27 @@ document.getElementById('cycle-current').addEventListener('click', async () => {
 });
 
 async function loadDashboard(cycleId) {
-    const [assignRes, subRes, extRes, extReqRes] = await Promise.all([
+    const [assignRes, subRes, extReqRes] = await Promise.all([
         apiGet('getAssignments', { cycle_id: cycleId }),
         apiGet('getSubmissions', { cycle_id: cycleId }),
-        apiGet('getExtensions', { cycle_id: cycleId }),
         apiGet('getExtensionRequests', { cycle_id: cycleId })
     ]);
 
     const residents = appData.members;
     const assignments = assignRes.success ? assignRes.data : [];
     const submissions = subRes.success ? subRes.data : [];
-    const extensions = extRes.success ? extRes.data : [];
     const extRequests = extReqRes.success ? extReqRes.data : [];
+
+    // Derive extensions from approved requests
+    const extensions = extRequests
+        .filter(r => String(r.status).trim().toLowerCase() === 'approved')
+        .map(r => ({
+            net_id: r.net_id,
+            cycle_id: r.cycle_id,
+            extended_deadline: r.requested_date,
+            granted_by: r.reviewed_by || '',
+            reason: r.reason || ''
+        }));
 
     // Render pending extension requests panel
     renderExtensionRequests(extRequests, cycleId);

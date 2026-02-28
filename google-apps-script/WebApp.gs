@@ -30,7 +30,7 @@
 
 var SUBTASKS_SHEET_NAME = "Subtasks";
 var SUBMISSIONS_SHEET_NAME = "Submissions";
-var EXTENSIONS_SHEET_NAME = "Extensions";
+// Extensions are now stored in ExtensionRequests sheet (status=approved)
 var EXT_REQUESTS_SHEET_NAME = "ExtensionRequests";
 
 // ─── Add to custom menu ──────────────────────────────
@@ -76,12 +76,22 @@ function doGet(e) {
       }
 
       case 'getExtensions': {
-        const exts = fetchSheetRows_(ss, EXTENSIONS_SHEET_NAME);
+        // Read approved extension requests as the canonical extensions
+        const allReqs = fetchSheetRows_(ss, EXT_REQUESTS_SHEET_NAME);
         const cycleId = e.parameter.cycle_id;
-        const filtered = cycleId
-          ? exts.filter(ex => normalizeCycleId_(ex.cycle_id) === normalizeCycleId_(cycleId))
-          : exts;
-        return apiJsonResponse({ success: true, data: filtered });
+        const approved = allReqs
+          .filter(r => String(r.status).trim().toLowerCase() === 'approved')
+          .filter(r => !cycleId || normalizeCycleId_(r.cycle_id) === normalizeCycleId_(cycleId))
+          .map(r => ({
+            id: r.id,
+            net_id: r.net_id,
+            cycle_id: r.cycle_id,
+            extended_deadline: r.requested_date,
+            granted_by: r.reviewed_by || '',
+            granted_at: r.reviewed_at || '',
+            reason: r.reason || ''
+          }));
+        return apiJsonResponse({ success: true, data: approved });
       }
 
       case 'getCycleInfo':
@@ -526,14 +536,24 @@ function handleSubmitChore_(ss, body) {
   let isLate = 0;
   if (now > deadline) {
     isLate = 1;
-    // Check for an active extension
-    const extSheet = ss.getSheetByName(EXTENSIONS_SHEET_NAME);
-    if (extSheet) {
-      const extData = extSheet.getDataRange().getValues();
-      for (let i = 1; i < extData.length; i++) {
-        if (String(extData[i][1]).trim() === body.net_id &&
-            String(extData[i][2]).trim() === cycleId) {
-          const extDeadline = new Date(extData[i][3]);
+    // Check for an approved extension request
+    var extReqSheet = ss.getSheetByName(EXT_REQUESTS_SHEET_NAME);
+    if (extReqSheet) {
+      var extData = extReqSheet.getDataRange().getValues();
+      // Columns: id(0)|net_id(1)|cycle_id(2)|reason(3)|requested_date(4)|status(5)
+      for (var ei = 1; ei < extData.length; ei++) {
+        if (String(extData[ei][1]).trim() === body.net_id &&
+            normalizeCycleId_(extData[ei][2]) === normalizeCycleId_(cycleId) &&
+            String(extData[ei][5]).trim().toLowerCase() === 'approved') {
+          // Use requested_date as the extension deadline
+          var rawExtDate = extData[ei][4];
+          var extDeadline;
+          if (rawExtDate instanceof Date) {
+            extDeadline = new Date(rawExtDate);
+          } else {
+            extDeadline = new Date(String(rawExtDate).trim() + 'T08:00:00');
+          }
+          extDeadline.setHours(8, 0, 0, 0);
           if (!isNaN(extDeadline.getTime()) && extDeadline > now) {
             isLate = 0;
             break;
@@ -566,23 +586,40 @@ function handleSubmitChore_(ss, body) {
   };
 }
 
+/**
+ * Grants an extension by creating an auto-approved entry in ExtensionRequests.
+ * Used for manual extensions from the dashboard "Extend" button.
+ */
 function handleGrantExtension_(ss, body) {
-  const sheet = ss.getSheetByName(EXTENSIONS_SHEET_NAME);
-  if (!sheet) throw new Error("'" + EXTENSIONS_SHEET_NAME + "' sheet not found.");
+  var sheet = ss.getSheetByName(EXT_REQUESTS_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(EXT_REQUESTS_SHEET_NAME);
+    sheet.appendRow(['id', 'net_id', 'cycle_id', 'reason', 'requested_date', 'status', 'requested_at', 'reviewed_by', 'reviewed_at', 'review_reason']);
+  }
 
-  const now = new Date();
-  const data = sheet.getDataRange().getValues();
-  const ids = data.slice(1).map(r => parseInt(r[0]) || 0);
-  const id = ids.length > 0 ? Math.max(...ids) + 1 : 1;
+  var now = new Date();
+  var data = sheet.getDataRange().getValues();
+  var ids = data.slice(1).map(function(r) { return parseInt(r[0]) || 0; });
+  var id = ids.length > 0 ? Math.max.apply(null, ids) + 1 : 1;
 
+  // Parse the extended_deadline to get just the date part for requested_date
+  var requestedDate = body.extended_deadline || '';
+  if (requestedDate && requestedDate.includes('T')) {
+    requestedDate = requestedDate.split('T')[0];
+  }
+
+  // Columns: id | net_id | cycle_id | reason | requested_date | status | requested_at | reviewed_by | reviewed_at | review_reason
   sheet.appendRow([
     id,
     body.net_id,
     body.cycle_id,
-    body.extended_deadline,
-    body.granted_by,
+    body.reason || 'Manual extension',
+    requestedDate,
+    'approved',
     now.toISOString(),
-    body.reason || ''
+    body.granted_by || '',
+    now.toISOString(),
+    'Granted directly by manager'
   ]);
 
   return {
@@ -703,13 +740,8 @@ function handleApproveExtension_(ss, body) {
       }
     }
 
-    handleGrantExtension_(ss, {
-      net_id: String(reqRow[1]).trim(),
-      cycle_id: reqRow[2],
-      extended_deadline: extDeadline,
-      granted_by: reviewedBy,
-      reason: 'Approved request: ' + String(reqRow[3]).trim()
-    });
+    // No need to create a separate extension — the approved request IS the extension.
+    // The requested_date (column 4) is used as the extension deadline.
   }
 
   return { success: true, data: { request_id: requestId, decision: decision } };
