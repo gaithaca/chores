@@ -1021,9 +1021,9 @@ async function loadDashboard(cycleId) {
       <td>${statusBadge}</td>
       <td>${timeCell}</td>
       <td class="actions-cell">
-        ${latestSub ? `<button class="btn btn-view" onclick="viewSubmission('${user.net_id}', '${cycleId}')">Details</button>` : ''}
+        ${latestSub ? `<button class="btn btn-view" onclick="viewSubmission('${user.net_id}', '${cycleId}')">Review</button>` : ''}
         ${assignment && !extension ? `<button class="btn btn-extend" onclick="openExtensionModal('${user.net_id}', '${user.name}', '${cycleId}')">Extend</button>` : ''}
-        ${assignment && !latestSub ? `<button class="btn btn-danger btn-small" onclick="sendFineNotification('${user.net_id}', '${user.name.replace(/'/g, "\\'")}', '${chore ? chore.name.replace(/'/g, "\\'") : ''}', '${cycleId}', this)">Fine $40</button>` : ''}
+        ${assignment ? `<button class="btn btn-danger btn-small" onclick="sendFineNotification('${user.net_id}', '${user.name.replace(/'/g, "\\'")}', '${chore ? chore.name.replace(/'/g, "\\'") : ''}', '${cycleId}', this)">Fine $40</button>` : ''}
       </td>`;
         tbody.appendChild(tr);
     });
@@ -1267,10 +1267,64 @@ async function viewSubmission(netId, cycleId) {
         }
     });
 
+    // Add fine button at the bottom of the review modal
+    const checkedTotal = userSubs.reduce((acc, sub) => {
+        let c;
+        const raw = sub.subtasks_checked_json || sub.subtasks_checked;
+        if (typeof raw === 'string') {
+            try { c = JSON.parse(raw); } catch { c = []; }
+        } else if (Array.isArray(raw)) { c = raw; } else { c = []; }
+        return { done: Math.max(acc.done, c.filter(Boolean).length), total: chore.subtasks.length };
+    }, { done: 0, total: chore.subtasks.length });
+
+    const incomplete = checkedTotal.total - checkedTotal.done;
+    if (incomplete > 0) {
+        const escapedName = (user ? user.name : netId).replace(/'/g, "\\'");
+        const escapedChore = chore.name.replace(/'/g, "\\'");
+        html += `
+    <div style="margin-top:20px; padding:14px 16px; background:rgba(212, 72, 72, 0.08); border:1px solid rgba(212, 72, 72, 0.25); border-radius:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <div>
+        <div style="font-weight:600; color:var(--cornell-red-light); font-size:0.88rem;">⚠️ ${incomplete} of ${checkedTotal.total} subtasks incomplete</div>
+        <div style="font-size:0.78rem; color:var(--text-muted); margin-top:2px;">Fine this resident if the chore was not completed satisfactorily.</div>
+      </div>
+      <button class="btn btn-danger btn-small" id="modal-fine-btn" onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', this)">Fine $40</button>
+    </div>`;
+    }
+
     document.getElementById('detail-modal-body').innerHTML = html;
     document.getElementById('detail-modal').classList.remove('hidden');
 }
 window.viewSubmission = viewSubmission;
+
+async function modalFine(netId, memberName, choreName, cycleId, btnEl) {
+    const note = prompt(`Fine $40 for ${memberName} — "${choreName}"\n\nReason (e.g. "chore not actually completed"):`, 'Chore not completed satisfactorily');
+    if (note === null) return;
+
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<span class="loading-spinner"></span>';
+
+    const res = await apiPost('sendFine', {
+        net_id: netId,
+        member_name: memberName,
+        chore_name: choreName,
+        fine_amount: 40,
+        cycle_id: cycleId,
+        granted_by: managerNetId,
+        note: note || ''
+    });
+
+    if (res.success) {
+        btnEl.innerHTML = '✓ Fine Sent';
+        btnEl.classList.remove('btn-danger');
+        btnEl.style.cssText = 'background:var(--green);color:#fff;pointer-events:none;';
+        showToast(`$40 fine sent to ${memberName}`, 'success');
+    } else {
+        btnEl.disabled = false;
+        btnEl.innerHTML = 'Fine $40';
+        showToast(res.error || 'Failed to send fine', 'error');
+    }
+}
+window.modalFine = modalFine;
 
 document.getElementById('detail-modal-close').addEventListener('click', () => {
     document.getElementById('detail-modal').classList.add('hidden');
