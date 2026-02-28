@@ -489,6 +489,38 @@ function findMember(netId) {
     return appData.members.find(m => m.net_id === netId);
 }
 
+// ─── Extension Request Status Helper ──────────────────
+
+function buildExtRequestStatusHTML(requests) {
+    if (!requests || requests.length === 0) return '';
+
+    return requests.map(req => {
+        const status = String(req.status || '').trim().toLowerCase();
+        let icon, label, color, bgColor, borderColor;
+
+        if (status === 'approved') {
+            icon = '✅'; label = 'Approved'; color = 'var(--green)';
+            bgColor = 'var(--green-bg)'; borderColor = 'var(--green-border)';
+        } else if (status === 'denied') {
+            icon = '❌'; label = 'Denied'; color = 'var(--cornell-red-light)';
+            bgColor = 'rgba(212, 72, 72, 0.1)'; borderColor = 'rgba(212, 72, 72, 0.3)';
+        } else {
+            icon = '⏳'; label = 'Pending'; color = 'var(--yellow)';
+            bgColor = 'rgba(234, 179, 8, 0.1)'; borderColor = 'rgba(234, 179, 8, 0.3)';
+        }
+
+        const dateInfo = req.requested_date ? ` until <strong>${req.requested_date}</strong>` : '';
+        const reviewReason = req.review_reason ? `<div style="margin-top:4px;font-style:italic;color:var(--text-secondary);">"${req.review_reason}"</div>` : '';
+        const reviewedBy = req.reviewed_by && status !== 'pending' ? `<span style="color:var(--text-muted);"> — reviewed by ${req.reviewed_by}</span>` : '';
+
+        return `<div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:${bgColor};border:1px solid ${borderColor};font-size:0.82rem;">
+            <span style="font-weight:600;color:${color};">${icon} Extension ${label}</span>${dateInfo}${reviewedBy}
+            ${req.reason ? `<div style="margin-top:2px;color:var(--text-secondary);">Reason: "${req.reason}"</div>` : ''}
+            ${reviewReason}
+        </div>`;
+    }).join('');
+}
+
 // ─── Resident View ────────────────────────────────────
 
 const netidInput = document.getElementById('netid-input');
@@ -531,15 +563,18 @@ async function handleNetIdSubmit() {
 
     currentUser = user;
 
-    // Fetch assignments and existing submissions for current cycle
-    const [assignRes, subRes] = await Promise.all([
+    // Fetch assignments, submissions, and extension requests for current cycle
+    const [assignRes, subRes, extReqRes] = await Promise.all([
         apiGet('getAssignments', { cycle_id: currentCycleId }),
-        apiGet('getSubmissions', { cycle_id: currentCycleId })
+        apiGet('getSubmissions', { cycle_id: currentCycleId }),
+        apiGet('getExtensionRequests', { cycle_id: currentCycleId })
     ]);
     const assignments = assignRes.success ? assignRes.data : [];
     const submissions = subRes.success ? subRes.data : [];
+    const extRequests = extReqRes.success ? extReqRes.data : [];
     const assignment = assignments.find(a => a.net_id === netId);
     const userSubmissions = submissions.filter(s => String(s.net_id).trim() === netId);
+    const userExtReq = extRequests.filter(r => String(r.net_id).trim().toLowerCase() === netId.toLowerCase());
 
     // Show resubmit notice if already submitted
     let resubmitNotice = '';
@@ -557,7 +592,8 @@ async function handleNetIdSubmit() {
         <div class="chore-info-card">
           <div class="chore-name">${chore.name}</div>
           <div class="chore-detail">Assigned to ${user.name} this week</div>
-          <a href="#" class="ext-request-link" id="request-ext-link">Need more time? Request an extension →</a>
+          <a href="#" class="ext-request-link${userExtReq.length > 0 ? ' hidden' : ''}" id="request-ext-link">Need more time? Request an extension →</a>
+          ${buildExtRequestStatusHTML(userExtReq)}
           <div id="ext-request-form" class="hidden" style="margin-top:10px;">
             <div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
               <div style="flex:1;min-width:150px;">
