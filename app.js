@@ -1059,6 +1059,10 @@ function renderExtensionRequests(requests, cycleId) {
 }
 
 async function handleExtReqDecision(requestId, decision, btnEl) {
+    const label = decision === 'approved' ? 'approving' : 'denying';
+    const reviewReason = prompt(`Optional: Add a reason for ${label} this request (or leave blank):`);
+    if (reviewReason === null) return; // user cancelled
+
     const card = btnEl.closest('.ext-request-card');
     card.style.opacity = '0.5';
     card.style.pointerEvents = 'none';
@@ -1066,7 +1070,8 @@ async function handleExtReqDecision(requestId, decision, btnEl) {
     const res = await apiPost('approveExtension', {
         request_id: requestId,
         decision: decision,
-        reviewed_by: managerNetId
+        reviewed_by: managerNetId,
+        review_reason: reviewReason.trim()
     });
 
     if (res.success) {

@@ -609,7 +609,7 @@ function handleRequestExtension_(ss, body) {
   var sheet = ss.getSheetByName(EXT_REQUESTS_SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(EXT_REQUESTS_SHEET_NAME);
-    sheet.appendRow(['id', 'net_id', 'cycle_id', 'reason', 'requested_date', 'status', 'requested_at', 'reviewed_by', 'reviewed_at']);
+    sheet.appendRow(['id', 'net_id', 'cycle_id', 'reason', 'requested_date', 'status', 'requested_at', 'reviewed_by', 'reviewed_at', 'review_reason']);
   }
 
   const data = sheet.getDataRange().getValues();
@@ -625,7 +625,7 @@ function handleRequestExtension_(ss, body) {
     }
   }
 
-  sheet.appendRow([id, netId, cycleId, reason, requestedDate, 'pending', new Date().toISOString(), '', '']);
+  sheet.appendRow([id, netId, cycleId, reason, requestedDate, 'pending', new Date().toISOString(), '', '', '']);
 
   return { success: true, data: { id: id, status: 'pending' } };
 }
@@ -639,6 +639,7 @@ function handleApproveExtension_(ss, body) {
   const requestId = parseInt(body.request_id);
   const decision = String(body.decision || '').trim().toLowerCase();
   const reviewedBy = body.reviewed_by || '';
+  const reviewReason = String(body.review_reason || '').trim();
 
   if (!requestId || !decision) return { success: false, error: 'Missing request_id or decision.' };
   if (decision !== 'approved' && decision !== 'denied') return { success: false, error: 'Decision must be "approved" or "denied".' };
@@ -650,12 +651,13 @@ function handleApproveExtension_(ss, body) {
   var found = false;
   var reqRow = null;
 
-  // Columns: id(0) | net_id(1) | cycle_id(2) | reason(3) | requested_date(4) | status(5) | requested_at(6) | reviewed_by(7) | reviewed_at(8)
+  // Columns: id(0) | net_id(1) | cycle_id(2) | reason(3) | requested_date(4) | status(5) | requested_at(6) | reviewed_by(7) | reviewed_at(8) | review_reason(9)
   for (var i = 1; i < data.length; i++) {
     if (parseInt(data[i][0]) === requestId) {
       sheet.getRange(i + 1, 6).setValue(decision);               // status
       sheet.getRange(i + 1, 8).setValue(reviewedBy);              // reviewed_by
       sheet.getRange(i + 1, 9).setValue(new Date().toISOString()); // reviewed_at
+      sheet.getRange(i + 1, 10).setValue(reviewReason);            // review_reason
       reqRow = data[i];
       found = true;
       break;
