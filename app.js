@@ -1264,7 +1264,7 @@ async function viewSubmission(netId, cycleId) {
         <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
           <th style="text-align:left; padding:8px; color:var(--text-muted); font-weight:600;">Subtask</th>
           <th style="text-align:center; padding:8px; color:var(--text-muted); font-weight:600; width:70px;">Resident</th>
-          <th style="text-align:center; padding:8px; color:var(--accent); font-weight:600; width:90px;">Manager ✓</th>
+          <th style="text-align:center; padding:8px; color:var(--text-muted); font-weight:600; width:100px;">Manager Review</th>
         </tr>
       </thead>
       <tbody>`;
@@ -1277,7 +1277,8 @@ async function viewSubmission(netId, cycleId) {
           <td style="padding:8px; color:var(--text-primary);">${task}</td>
           <td style="text-align:center; padding:8px;">${residentDone ? '✅' : '⬜'}</td>
           <td style="text-align:center; padding:8px;">
-            <input type="checkbox" name="review-${submission.id}-${i}" ${mgrChecked ? 'checked' : ''} style="cursor:pointer; width:18px; height:18px; accent-color:var(--green);">
+            <input type="checkbox" name="review-${submission.id}-${i}" ${mgrChecked ? 'checked' : ''} id="rcb-${submission.id}-${i}" style="display:none;">
+            <span onclick="var cb=document.getElementById('rcb-${submission.id}-${i}');cb.checked=!cb.checked;this.textContent=cb.checked?'✅':'⬜';" style="cursor:pointer;font-size:1.1rem;user-select:none;">${mgrChecked ? '✅' : '⬜'}</span>
           </td>
         </tr>`;
         });
