@@ -747,6 +747,62 @@ function handleApproveExtension_(ss, body) {
     // The requested_date (column 4) is used as the extension deadline.
   }
 
+  // Send email notification to the resident about the decision
+  try {
+    var netId = String(reqRow[1]).trim();
+    var members = fetchMembers_(ss);
+    var member = null;
+    for (var mi = 0; mi < members.length; mi++) {
+      if (members[mi].net_id === netId) { member = members[mi]; break; }
+    }
+    if (member && member.email) {
+      var memberName = member.name || netId;
+      var isApproved = decision === 'approved';
+      var reqDateRaw = reqRow[4];
+      var reqDateDisplay = '';
+      if (reqDateRaw instanceof Date) {
+        reqDateDisplay = Utilities.formatDate(reqDateRaw, Session.getScriptTimeZone(), 'EEE, MMM d');
+      } else if (reqDateRaw) {
+        var pd = new Date(String(reqDateRaw).trim() + 'T00:00:00');
+        if (!isNaN(pd.getTime())) reqDateDisplay = Utilities.formatDate(pd, Session.getScriptTimeZone(), 'EEE, MMM d');
+      }
+      var reason = String(reqRow[3] || '').trim();
+
+      var statusColor = isApproved ? '#22c55e' : '#ef4444';
+      var statusIcon = isApproved ? '✅' : '❌';
+      var statusLabel = isApproved ? 'Approved' : 'Denied';
+
+      var emailHtml = '<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">' +
+        '<div style="background:linear-gradient(135deg,' + (isApproved ? '#22c55e,#16a34a' : '#ef4444,#dc2626') + ');padding:24px;border-radius:12px 12px 0 0;color:#fff;">' +
+          '<h2 style="margin:0 0 6px 0;">' + statusIcon + ' Extension Request ' + statusLabel + '</h2>' +
+          '<p style="margin:0;opacity:0.9;">Hi ' + memberName + ', your extension request has been reviewed.</p>' +
+        '</div>' +
+        '<div style="background:#fff;border:1px solid #e9ecef;border-top:none;padding:20px;border-radius:0 0 12px 12px;">' +
+          '<div style="margin-bottom:16px;padding:12px 16px;border-radius:8px;background:' + (isApproved ? '#f0fdf4' : '#fef2f2') + ';border-left:4px solid ' + statusColor + ';">' +
+            '<span style="font-weight:600;color:' + statusColor + ';font-size:18px;">' + statusIcon + ' ' + statusLabel + '</span>' +
+            (isApproved && reqDateDisplay ? '<div style="margin-top:6px;color:#495057;">Your new deadline is <strong>' + reqDateDisplay + ' at 8:00 AM</strong></div>' : '') +
+          '</div>' +
+          '<div style="margin-bottom:12px;"><span style="font-weight:600;">Your reason:</span> "' + reason + '"</div>' +
+          (reqDateDisplay ? '<div style="margin-bottom:12px;"><span style="font-weight:600;">Requested until:</span> ' + reqDateDisplay + '</div>' : '') +
+          (reviewReason ? '<div style="margin-top:16px;padding:12px 16px;background:#f8f9fa;border-radius:8px;border-left:3px solid #4a6cf7;">' +
+            '<div style="font-size:13px;font-weight:600;color:#6c757d;margin-bottom:4px;">📝 Manager\'s Note</div>' +
+            '<div style="color:#495057;">' + reviewReason + '</div>' +
+          '</div>' : '') +
+          '<div style="margin-top:20px;font-size:13px;color:#6c757d;">Reviewed by ' + reviewedBy + ' · ΓΑ Chore Tracker</div>' +
+        '</div>' +
+      '</body></html>';
+
+      MailApp.sendEmail({
+        to: member.email,
+        subject: statusIcon + ' Extension ' + statusLabel + ' — ΓΑ Chore Tracker',
+        htmlBody: emailHtml
+      });
+    }
+  } catch (emailErr) {
+    // Don't fail the whole action if email fails
+    Logger.log('Extension email error: ' + emailErr);
+  }
+
   return { success: true, data: { request_id: requestId, decision: decision } };
 }
 
