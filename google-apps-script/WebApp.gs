@@ -615,7 +615,6 @@ function handleGrantExtension_(ss, body) {
   if (requestedDate && requestedDate.includes('T')) {
     requestedDate = requestedDate.split('T')[0];
   }
-
   // Columns: id | net_id | cycle_id | reason | requested_date | status | requested_at | reviewed_by | reviewed_at | review_reason
   sheet.appendRow([
     id,
@@ -629,6 +628,50 @@ function handleGrantExtension_(ss, body) {
     now.toISOString(),
     'Granted directly by manager'
   ]);
+
+  // Email the resident about the extension
+  try {
+    var members = fetchMembers_(ss);
+    var member = null;
+    for (var mi = 0; mi < members.length; mi++) {
+      if (members[mi].net_id === body.net_id) { member = members[mi]; break; }
+    }
+    if (member && member.email) {
+      var memberName = member.name || body.net_id;
+      var grantedBy = body.granted_by || 'House Manager';
+      var reason = body.reason || 'Manual extension';
+      var deadlineDisplay = '';
+      if (requestedDate) {
+        var dd = new Date(requestedDate + 'T00:00:00');
+        if (!isNaN(dd.getTime())) {
+          deadlineDisplay = Utilities.formatDate(dd, Session.getScriptTimeZone(), 'EEE, MMM d');
+        }
+      }
+
+      var emailHtml = '<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">' +
+        '<div style="background:linear-gradient(135deg,#22c55e,#16a34a);padding:24px;border-radius:12px 12px 0 0;color:#fff;">' +
+          '<h2 style="margin:0 0 6px 0;">✅ Extension Granted</h2>' +
+          '<p style="margin:0;opacity:0.9;">Hi ' + memberName + ', you\'ve been granted an extension for your chore.</p>' +
+        '</div>' +
+        '<div style="background:#fff;border:1px solid #e9ecef;border-top:none;padding:20px;border-radius:0 0 12px 12px;">' +
+          '<div style="margin-bottom:16px;padding:12px 16px;border-radius:8px;background:#f0fdf4;border-left:4px solid #22c55e;">' +
+            '<span style="font-weight:600;color:#22c55e;font-size:18px;">✅ Approved</span>' +
+            (deadlineDisplay ? '<div style="margin-top:6px;color:#495057;">Your new deadline is <strong>' + deadlineDisplay + ' at 8:00 AM</strong></div>' : '') +
+          '</div>' +
+          '<div style="margin-bottom:12px;"><span style="font-weight:600;">Reason:</span> ' + reason + '</div>' +
+          '<div style="margin-top:20px;font-size:13px;color:#6c757d;">Granted by ' + grantedBy + ' · ΓΑ Chore Tracker</div>' +
+        '</div>' +
+      '</body></html>';
+
+      MailApp.sendEmail({
+        to: member.email,
+        subject: '✅ Extension Granted — ΓΑ Chore Tracker',
+        htmlBody: emailHtml
+      });
+    }
+  } catch (emailErr) {
+    Logger.log('Extension grant email error: ' + emailErr);
+  }
 
   return {
     id: id,
