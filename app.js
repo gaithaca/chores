@@ -903,7 +903,7 @@ async function handleManagerLogin() {
     // Verify credentials server-side (demo mode: accept 'demo' as password)
     if (DEMO_MODE) {
         const user = appData.members.find(u => u.net_id === netId);
-        if (!user || user.role !== 'house_manager' || password !== 'demo') {
+        if (!user || (user.role !== 'house_manager' && user.role !== 'president') || password !== 'demo') {
             managerError.textContent = 'Invalid credentials. (Demo password is "demo")';
             managerLoginBtn.innerHTML = 'Access Dashboard <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
             return;

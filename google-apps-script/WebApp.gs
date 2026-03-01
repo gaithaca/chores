@@ -319,7 +319,8 @@ function handleSendFine_(ss, body) {
 }
 
 /**
- * Verifies manager credentials. Reads password from column G of the Members sheet.
+ * Verifies manager/president credentials. Reads password from column G of the Members sheet.
+ * Accepts roles: house_manager, president
  */
 function verifyManager_(ss, body) {
   const netId = String(body.net_id || '').trim().toLowerCase();
@@ -327,6 +328,8 @@ function verifyManager_(ss, body) {
   if (!netId || !password) {
     return { success: false, error: 'Net ID and password are required.' };
   }
+
+  const ALLOWED_ROLES = ['house_manager', 'president'];
 
   const sheet = ss.getSheetByName(MEMBERS_SHEET);
   if (!sheet) return { success: false, error: 'Members sheet not found.' };
@@ -338,14 +341,14 @@ function verifyManager_(ss, body) {
     const storedPw = data[i].length > 6 ? String(data[i][6]).trim() : '';
 
     if (rowId === netId) {
-      if (role !== 'house_manager') {
-        return { success: false, error: 'This account does not have manager access.' };
+      if (ALLOWED_ROLES.indexOf(role) === -1) {
+        return { success: false, error: 'This account does not have dashboard access.' };
       }
       if (!storedPw) {
         return { success: false, error: 'No password set for this account. Add one in column G of the Members sheet.' };
       }
       if (storedPw === password) {
-        return { success: true };
+        return { success: true, role: role };
       } else {
         return { success: false, error: 'Incorrect password.' };
       }
