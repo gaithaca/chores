@@ -1313,7 +1313,7 @@ async function viewSubmission(netId, cycleId) {
       <textarea id="review-reason-input" rows="2" placeholder="e.g. Bathroom floor still dirty, trash not taken out..." style="width:100%; margin-bottom:10px; font-size:0.85rem;">${existingReviewReason.replace(/^\[.*?\]\s*/, '')}</textarea>
       <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
         <button class="btn btn-primary btn-small" id="save-review-btn" onclick="saveManagerReview(${submission.id}, ${chore.subtasks.length})">💾 Save Review</button>
-        <button class="btn btn-small" style="background:var(--accent);color:#fff;" onclick="sendReviewEmail('${netId}', '${escapedName}', '${escapedChore}', ${submission.id}, ${chore.subtasks.length}, '${cycleId}', this)">📧 Email Review</button>
+        <button class="btn btn-email btn-small" onclick="sendReviewEmail('${netId}', '${escapedName}', '${escapedChore}', ${submission.id}, ${chore.subtasks.length}, '${cycleId}', this)">📧 Email Review</button>
         <button class="btn btn-danger btn-small" onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', this)">Fine $40</button>
         <span id="review-save-status" style="font-size:0.82rem;"></span>
       </div>

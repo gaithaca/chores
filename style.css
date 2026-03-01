@@ -406,6 +406,39 @@ select option {
 .btn-danger {
   background: linear-gradient(135deg, var(--red), #dc2626);
   color: white;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-danger:hover {
+  background: linear-gradient(135deg, #ef4444, #f43f5e);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+}
+
+.btn-danger:active {
+  transform: translateY(0);
+  background: linear-gradient(135deg, #b91c1c, #dc2626);
+  box-shadow: none;
+}
+
+.btn-email {
+  background: linear-gradient(135deg, var(--accent), #6d28d9);
+  color: white;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-email:hover {
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+}
+
+.btn-email:active {
+  transform: translateY(0);
+  background: linear-gradient(135deg, #5b21b6, #6d28d9);
+  box-shadow: none;
 }
 
 .btn-extend {
