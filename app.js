@@ -1313,6 +1313,7 @@ async function viewSubmission(netId, cycleId) {
       <textarea id="review-reason-input" rows="2" placeholder="e.g. Bathroom floor still dirty, trash not taken out..." style="width:100%; margin-bottom:10px; font-size:0.85rem;">${existingReviewReason.replace(/^\[.*?\]\s*/, '')}</textarea>
       <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
         <button class="btn btn-primary btn-small" id="save-review-btn" onclick="saveManagerReview(${submission.id}, ${chore.subtasks.length})">💾 Save Review</button>
+        <button class="btn btn-small" style="background:var(--accent);color:#fff;" onclick="sendReviewEmail('${netId}', '${escapedName}', '${escapedChore}', ${submission.id}, ${chore.subtasks.length}, '${cycleId}', this)">📧 Email Review</button>
         <button class="btn btn-danger btn-small" onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', this)">Fine $40</button>
         <span id="review-save-status" style="font-size:0.82rem;"></span>
       </div>
@@ -1360,6 +1361,50 @@ async function saveManagerReview(submissionId, subtaskCount) {
     }
 }
 window.saveManagerReview = saveManagerReview;
+
+async function sendReviewEmail(netId, memberName, choreName, submissionId, subtaskCount, cycleId, btnEl) {
+    // Collect current review state from the modal
+    const subtasks = [];
+    const table = document.querySelector(`table[data-sub-id="${submissionId}"]`);
+    if (table) {
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach((row, i) => {
+            const cells = row.querySelectorAll('td');
+            const name = cells[0] ? cells[0].textContent.trim() : `Subtask ${i + 1}`;
+            const residentDone = cells[1] ? cells[1].textContent.trim() === '✅' : false;
+            const cb = document.querySelector(`input[name="review-${submissionId}-${i}"]`);
+            const managerDone = cb ? cb.checked : false;
+            subtasks.push({ name, resident: residentDone, manager: managerDone });
+        });
+    }
+
+    const reviewReason = document.getElementById('review-reason-input')?.value.trim() || '';
+
+    btnEl.disabled = true;
+    const origText = btnEl.innerHTML;
+    btnEl.innerHTML = '<span class="loading-spinner"></span> Sending...';
+
+    const res = await apiPost('sendReviewEmail', {
+        net_id: netId,
+        member_name: memberName,
+        chore_name: choreName,
+        subtasks: subtasks,
+        review_reason: reviewReason,
+        reviewed_by: managerNetId,
+        cycle_id: cycleId
+    });
+
+    if (res.success) {
+        btnEl.innerHTML = '✓ Sent';
+        btnEl.style.cssText = 'background:var(--green);color:#fff;pointer-events:none;';
+        showToast(`Review emailed to ${res.data.sent_to}`, 'success');
+    } else {
+        btnEl.disabled = false;
+        btnEl.innerHTML = origText;
+        showToast(res.error || 'Failed to send email', 'error');
+    }
+}
+window.sendReviewEmail = sendReviewEmail;
 
 async function modalFine(netId, memberName, choreName, cycleId, btnEl) {
     const note = prompt(`Fine $40 for ${memberName} — "${choreName}"\n\nReason (e.g. "chore not actually completed"):`, 'Chore not completed satisfactorily');

@@ -148,6 +148,9 @@ function doPost(e) {
       case 'reviewSubmission':
         return apiJsonResponse(handleReviewSubmission_(ss, body));
 
+      case 'sendReviewEmail':
+        return apiJsonResponse(handleSendReviewEmail_(ss, body));
+
       default:
         return apiJsonResponse({ success: false, error: 'Unknown action: ' + action });
     }
@@ -780,6 +783,90 @@ function handleReviewSubmission_(ss, body) {
 
   if (!found) return { success: false, error: 'Submission not found.' };
   return { success: true, data: { submission_id: submissionId } };
+}
+
+// ─── Send Review Email ────────────────────────────────
+/**
+ * Sends the manager's chore review to the resident via email.
+ * body: { net_id, member_name, chore_name, subtasks (array of {name, resident, manager}), review_reason, reviewed_by, cycle_id }
+ */
+function handleSendReviewEmail_(ss, body) {
+  var netId = String(body.net_id || '').trim();
+  if (!netId) return { success: false, error: 'Missing net_id.' };
+
+  // Look up email from Members sheet
+  var members = fetchMembers_(ss);
+  var member = null;
+  for (var i = 0; i < members.length; i++) {
+    if (members[i].net_id === netId) { member = members[i]; break; }
+  }
+  if (!member || !member.email) return { success: false, error: 'No email found for ' + netId };
+
+  var memberName = body.member_name || member.name || netId;
+  var choreName = body.chore_name || 'Chore';
+  var subtasks = body.subtasks || [];
+  var reviewReason = String(body.review_reason || '').trim();
+  var reviewedBy = body.reviewed_by || 'House Manager';
+  var cycleId = body.cycle_id || '';
+
+  // Count stats
+  var totalComplete = 0;
+  for (var j = 0; j < subtasks.length; j++) {
+    if (subtasks[j].manager) totalComplete++;
+  }
+
+  // Build subtask rows
+  var subtaskRows = '';
+  for (var k = 0; k < subtasks.length; k++) {
+    var st = subtasks[k];
+    var rowBg = k % 2 === 0 ? '#f8f9fa' : '#ffffff';
+    var mgrIcon = st.manager ? '✅' : '❌';
+    var resIcon = st.resident ? '✅' : '⬜';
+    subtaskRows += '<tr style="background:' + rowBg + ';">' +
+      '<td style="padding:10px 14px;border-bottom:1px solid #e9ecef;">' + st.name + '</td>' +
+      '<td style="padding:10px 14px;border-bottom:1px solid #e9ecef;text-align:center;">' + resIcon + '</td>' +
+      '<td style="padding:10px 14px;border-bottom:1px solid #e9ecef;text-align:center;">' + mgrIcon + '</td>' +
+      '</tr>';
+  }
+
+  var statusColor = totalComplete === subtasks.length ? '#22c55e' : '#ef4444';
+  var statusText = totalComplete === subtasks.length ? 'All Tasks Complete ✅' : totalComplete + ' of ' + subtasks.length + ' Verified Complete';
+
+  var htmlBody = '<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">' +
+    '<div style="background:linear-gradient(135deg,#4a6cf7,#7c3aed);padding:24px;border-radius:12px 12px 0 0;color:#fff;">' +
+      '<h2 style="margin:0 0 6px 0;">📋 Chore Review</h2>' +
+      '<p style="margin:0;opacity:0.9;">Hi ' + memberName + ', here\'s your chore review for the week of ' + cycleId + '.</p>' +
+    '</div>' +
+    '<div style="background:#fff;border:1px solid #e9ecef;border-top:none;padding:20px;border-radius:0 0 12px 12px;">' +
+      '<div style="margin-bottom:16px;">' +
+        '<span style="font-weight:600;">Chore:</span> ' + choreName +
+      '</div>' +
+      '<div style="margin-bottom:16px;padding:10px 14px;border-radius:8px;background:' + (totalComplete === subtasks.length ? '#f0fdf4' : '#fef2f2') + ';border-left:4px solid ' + statusColor + ';">' +
+        '<span style="font-weight:600;color:' + statusColor + ';">' + statusText + '</span>' +
+      '</div>' +
+      '<table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;border:1px solid #e9ecef;">' +
+        '<thead><tr style="background:#f1f3f5;">' +
+          '<th style="padding:10px 14px;text-align:left;font-weight:600;color:#495057;">Subtask</th>' +
+          '<th style="padding:10px 14px;text-align:center;font-weight:600;color:#495057;width:80px;">You</th>' +
+          '<th style="padding:10px 14px;text-align:center;font-weight:600;color:#495057;width:80px;">Manager</th>' +
+        '</tr></thead>' +
+        '<tbody>' + subtaskRows + '</tbody>' +
+      '</table>' +
+      (reviewReason ? '<div style="margin-top:16px;padding:12px 16px;background:#f8f9fa;border-radius:8px;border-left:3px solid #4a6cf7;">' +
+        '<div style="font-size:13px;font-weight:600;color:#6c757d;margin-bottom:4px;">📝 Manager Notes</div>' +
+        '<div style="color:#495057;">' + reviewReason + '</div>' +
+      '</div>' : '') +
+      '<div style="margin-top:20px;font-size:13px;color:#6c757d;">Reviewed by ' + reviewedBy + ' · ΓΑ Chore Tracker</div>' +
+    '</div>' +
+  '</body></html>';
+
+  MailApp.sendEmail({
+    to: member.email,
+    subject: '📋 Chore Review: ' + choreName + ' — Week of ' + cycleId,
+    htmlBody: htmlBody
+  });
+
+  return { success: true, data: { sent_to: member.email } };
 }
 
 // ─── Seed Subtasks ────────────────────────────────────
