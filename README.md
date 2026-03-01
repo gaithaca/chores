@@ -38,6 +38,11 @@ You'll see the status of your request on your screen:
 - ✅ **Approved** — you have until the new date
 - ❌ **Denied** — with the manager's reason
 
+### Email Notifications
+You'll receive emails when:
+- Your **extension request** is approved or denied (includes the decision, new deadline if approved, and the manager's note)
+- The House Manager **reviews your chore submission** (includes a table showing which subtasks were verified as complete/incomplete and any feedback)
+
 ---
 
 ## 🏠 For the House Manager
@@ -54,32 +59,35 @@ The dashboard shows:
 - **Extension request panel**: Pending requests requiring your action
 
 ### Reviewing Submissions
-Click **Review** on any submitted chore to open a detailed modal:
-- See the **Resident** column (what they self-reported ✅/⬜)
-- Use the **Manager Review** column to mark your own assessment of each subtask
-- Add **review notes** explaining any issues
-- Click **💾 Save Review** to record your assessment
-- The review is saved and will show a "Reviewed" badge
+Click **Review** on any submitted chore to open a scrollable modal:
+- **Resident** column shows what the resident self-reported (✅/⬜)
+- **Manager Review** column — click ✅/⬜ toggles to mark each subtask as verified complete or incomplete
+- Add **review notes** in the text area (e.g. "bathroom floor still dirty")
+- Click **💾 Save Review** to record your assessment — a "Reviewed" badge appears
+- Click **📧 Email Review** to send the resident a styled email with your review table and notes
 
 ### Fining Residents
 You can issue a **$40 fine** in two ways:
 1. **From the table**: Click the **Fine $40** button in any resident's row
-2. **From the review modal**: After reviewing incomplete subtasks, use the **Fine $40** button at the bottom
+2. **From the review modal**: After reviewing subtasks, use the **Fine $40** button
 
-Both prompt you for a justification note before sending.
+Both prompt you for a justification note before sending. Fine notifications are sent via Discord (with @mentions to the resident and treasurer) and recorded in the Fines sheet.
 
 ### Granting Extensions
 - Click **Extend** in any resident's row to manually grant a custom extension
-- Or review incoming **extension requests** at the top of the dashboard
+- Or review incoming **extension requests** in the panel at the top of the dashboard
 - Each request shows the resident's name, reason, and requested date
-- Click **✓ Approve** or **✕ Deny** — you'll be prompted for an optional justification
+- Click **✓ Approve** or **✕ Deny** — add an optional justification note
 - Approved requests automatically extend the resident's deadline
+- **The resident receives an email** with the decision, new deadline (if approved), and your note
 
-### Sending Notifications
-Notification emails and Discord messages include:
-- The assigned chore and subtask checklist link
-- A link to the web-based submission portal
-- Extension request instructions
+### Notifications Sent Automatically
+| Event | Email | Discord |
+|-------|-------|---------|
+| Extension approved/denied | ✅ Resident notified | — |
+| Chore review emailed | ✅ Resident notified | — |
+| Fine issued | — | ✅ Resident + Treasurer pinged |
+| Weekly chore assignments | ✅ All residents | ✅ Channel message |
 
 ---
 
@@ -162,6 +170,17 @@ erDiagram
         string reviewed_at
         string review_reason "Manager's justification"
     }
+    Fines {
+        int id
+        string net_id "FK → Members.id"
+        string member_name
+        string chore_name
+        int fine_amount "Default 40"
+        string cycle_id
+        string granted_by
+        string note
+        string sent_at
+    }
     CurrentAssignments {
         string Member
         string ChoreOrStatus
@@ -171,6 +190,7 @@ erDiagram
 
     Members ||--o{ Submissions : submits
     Members ||--o{ ExtensionRequests : requests
+    Members ||--o{ Fines : receives
     Chores ||--o{ Subtasks : has
     Chores ||--o{ Submissions : "submitted for"
 ```
@@ -184,8 +204,11 @@ erDiagram
 | `Subtasks` | `chore_id` · `chore_name` · `subtask_text` |
 | `Submissions` | `id` · `net_id` · `chore_id` · `subtasks_checked_json` · `submitted_at` · `cycle_id` · `is_late` · `note` · `manager_review_json` · `review_reason` |
 | `ExtensionRequests` | `id` · `net_id` · `cycle_id` · `reason` · `requested_date` · `status` · `requested_at` · `reviewed_by` · `reviewed_at` · `review_reason` |
+| `Fines` | `id` · `net_id` · `member_name` · `chore_name` · `fine_amount` · `cycle_id` · `granted_by` · `note` · `sent_at` |
 
 Existing sheets (`Chores`, `Members`, `History`, `Availability`, `Current Assignments`) remain unchanged.
+
+> **Note**: The `Fines` sheet is auto-created the first time a fine is issued. No manual setup needed.
 
 ### API Endpoints
 
@@ -212,6 +235,7 @@ Existing sheets (`Chores`, `Members`, `History`, `Availability`, `Current Assign
 | `requestExtension` | `net_id, cycle_id, reason, requested_date` | Resident requests extension |
 | `approveExtension` | `request_id, decision, reviewed_by, review_reason` | Approve/deny extension request |
 | `reviewSubmission` | `submission_id, review_checks, review_reason, reviewed_by` | Save manager's subtask review |
+| `sendReviewEmail` | `net_id, member_name, chore_name, subtasks, review_reason, reviewed_by, cycle_id` | Email review to resident |
 
 ### Setup
 
@@ -249,7 +273,11 @@ const CHORE_SUBMIT_URL = "https://your-github-username.github.io/chores/";
 const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/YOUR_WEBHOOK";
 ```
 
-#### 4. Deploy
+#### 4. Time Zone
+
+In the Apps Script editor, go to ⚙️ **Project Settings** and make sure the time zone is set to **`(GMT-05:00) Eastern Time`** so the Monday 8 AM deadline aligns with Cornell's time zone.
+
+#### 5. Deploy
 
 Push to GitHub and enable **GitHub Pages** (Settings → Pages → Source: main branch).
 
