@@ -335,6 +335,11 @@ input[type="password"] {
   padding-right: 40px;
 }
 
+select option {
+  background: #1a1a2e;
+  color: #e0e0e0;
+}
+
 /* ─── Buttons ─── */
 .btn {
   display: inline-flex;
