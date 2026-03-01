@@ -2,7 +2,90 @@
 
 A weekly chore tracking system for the Gamma Alpha cooperative house at Cornell University. Residents check off subtasks, submit their chores, and the House Manager monitors everything from a dashboard — all powered by a Google Sheet.
 
-## How It Works
+---
+
+## 📋 For Residents
+
+### Getting Started
+1. Go to the chore tracker website
+2. Enter your **Cornell Net ID** (e.g. `abc12`) and click Continue
+3. You'll see your assigned chore for the current week
+
+### Submitting a Chore
+- Check off each subtask ✅ as you complete it
+- The progress bar fills up as you go
+- Add an optional note if needed
+- Click **Submit Chore** when you're ready
+- You'll see a confirmation page with your submission details
+
+### Resubmitting
+If you've already submitted, your previous subtasks are **pre-checked** so you don't start from scratch. Just check off any new items and submit again. Previous notes are also carried over.
+
+### Deadlines
+- All chores are due by **Monday at 8:00 AM**
+- The deadline and countdown are displayed on your screen
+- Late submissions are automatically flagged and may result in a **$40 fine**
+
+### Requesting an Extension
+If you need more time:
+1. Click **"Need more time? Request an extension →"** under your chore
+2. Pick a date you'd like the extension until
+3. Explain why you need more time
+4. Click **Send Request**
+
+You'll see the status of your request on your screen:
+- ⏳ **Pending** — waiting for the House Manager to review
+- ✅ **Approved** — you have until the new date
+- ❌ **Denied** — with the manager's reason
+
+---
+
+## 🏠 For the House Manager
+
+### Accessing the Dashboard
+1. Navigate to the **Dashboard** tab at the top
+2. Enter your Net ID and manager password
+3. You'll see the full management dashboard
+
+### Dashboard Overview
+The dashboard shows:
+- **Stats bar**: Total residents, submitted, late, pending
+- **Submissions table**: Every resident's status, chore, submission time
+- **Extension request panel**: Pending requests requiring your action
+
+### Reviewing Submissions
+Click **Review** on any submitted chore to open a detailed modal:
+- See the **Resident** column (what they self-reported ✅/⬜)
+- Use the **Manager Review** column to mark your own assessment of each subtask
+- Add **review notes** explaining any issues
+- Click **💾 Save Review** to record your assessment
+- The review is saved and will show a "Reviewed" badge
+
+### Fining Residents
+You can issue a **$40 fine** in two ways:
+1. **From the table**: Click the **Fine $40** button in any resident's row
+2. **From the review modal**: After reviewing incomplete subtasks, use the **Fine $40** button at the bottom
+
+Both prompt you for a justification note before sending.
+
+### Granting Extensions
+- Click **Extend** in any resident's row to manually grant a custom extension
+- Or review incoming **extension requests** at the top of the dashboard
+- Each request shows the resident's name, reason, and requested date
+- Click **✓ Approve** or **✕ Deny** — you'll be prompted for an optional justification
+- Approved requests automatically extend the resident's deadline
+
+### Sending Notifications
+Notification emails and Discord messages include:
+- The assigned chore and subtask checklist link
+- A link to the web-based submission portal
+- Extension request instructions
+
+---
+
+## 🛠️ Developer Notes
+
+### Architecture
 
 ```mermaid
 graph LR
@@ -11,54 +94,28 @@ graph LR
     end
     subgraph "Google Cloud"
         B[Google Apps Script<br>WebApp.gs + Code.gs]
-        C[(Google Sheets<br>Members · Chores<br>Subtasks · Submissions)]
+        C[(Google Sheets<br>Members · Chores<br>Subtasks · Submissions<br>ExtensionRequests)]
     end
     A -- "fetch / POST" --> B
     B -- "read / write" --> C
     B -- "notifications" --> D[Discord + Email]
 ```
 
-### Weekly Cycle
-
-```mermaid
-graph TD
-    A["🗓️ Sunday 9 AM<br>Trigger runs assignChores()"] --> B["📋 Current Assignments<br>sheet is populated"]
-    B --> C["📧 Manager reviews & sends<br>notifications (Discord + Email)"]
-    C --> D["✅ Residents submit chores<br>via the website all week"]
-    D --> E{"⏰ Monday 8 AM<br>Deadline"}
-    E -- "Before deadline" --> F["✅ On Time"]
-    E -- "After deadline" --> G["🔴 Late — $40 Fine"]
-    G -- "Manager grants extension" --> H["✅ Extended deadline"]
-```
-
-## Features
-
-| Feature | Description |
-|---------|-------------|
-| **Resident Submission** | Enter Net ID → see assigned chore → check off subtasks → submit |
-| **Partial Completion** | Submit even if not all subtasks are done |
-| **Multiple Submissions** | Resubmit anytime — all records are kept, latest shown |
-| **Submission Notes** | Optional note attached to each submission |
-| **Manager Dashboard** | Stats, submission table, late flagging with $40 fine badges |
-| **Extensions** | Manager can grant custom deadline extensions per resident |
-| **Dynamic Subtasks** | Chores and subtasks read live from Google Sheets — edit anytime |
-| **Fair Assignment** | Histogram-based algorithm ensures uniform chore distribution |
-| **Demo Mode** | Works offline for testing — no Google Sheet needed |
-
-## Project Structure
+### Project Structure
 
 ```
 gamma-alpha-chores/
-├── index.html                        # Main page (both views)
+├── index.html                        # Main page (resident + dashboard views)
 ├── style.css                         # Dark theme, glassmorphism, responsive
-├── app.js                            # Frontend logic + demo data
+├── app.js                            # Frontend logic, API layer, demo data
 ├── README.md
 └── google-apps-script/
-    ├── WebApp.gs                     # API endpoints (paste into Apps Script)
-    └── ImprovedAssignment.gs         # Better chore assignment algorithm
+    ├── WebApp.gs                     # API endpoints (deploy as web app)
+    ├── Code.gs                       # Assignment logic, notifications
+    └── ImprovedAssignment.gs         # Histogram-based chore assignment
 ```
 
-## Google Sheet Structure
+### Google Sheet Structure
 
 ```mermaid
 erDiagram
@@ -85,20 +142,25 @@ erDiagram
         int id
         string net_id "FK → Members.id"
         string chore_id "FK → Chores.id"
-        string subtasks_checked_json
+        string subtasks_checked_json "JSON array of booleans"
         string submitted_at
-        string cycle_id "Week-of date"
-        int is_late
+        string cycle_id "Week-of date YYYY-MM-DD"
+        int is_late "0 or 1"
         string note
+        string manager_review_json "JSON array of booleans"
+        string review_reason "Manager review notes"
     }
-    Extensions {
+    ExtensionRequests {
         int id
         string net_id "FK → Members.id"
         string cycle_id
-        string extended_deadline
-        string granted_by
-        string granted_at
-        string reason
+        string reason "Resident's reason"
+        string requested_date "YYYY-MM-DD"
+        string status "pending / approved / denied"
+        string requested_at
+        string reviewed_by
+        string reviewed_at
+        string review_reason "Manager's justification"
     }
     CurrentAssignments {
         string Member
@@ -108,32 +170,60 @@ erDiagram
     }
 
     Members ||--o{ Submissions : submits
-    Members ||--o{ Extensions : receives
+    Members ||--o{ ExtensionRequests : requests
     Chores ||--o{ Subtasks : has
     Chores ||--o{ Submissions : "submitted for"
 ```
 
-**Existing sheets** (used by the assignment script): `Chores`, `Members`, `History`, `Availability`, `Current Assignments`
+> **Note**: The system uses a single `ExtensionRequests` sheet for all extension data. When approved, the `requested_date` serves as the extension deadline. There is no separate `Extensions` sheet.
 
-**New sheets** (added for the web tracker): `Subtasks`, `Submissions`, `Extensions`
-
-## Setup
-
-### 1. Google Sheet
-
-Your existing sheet already has `Chores`, `Members`, `History`, `Availability`, and `Current Assignments`.
-
-Add **3 new tabs** (just headers in row 1, data is auto-filled):
+### Required Sheets
 
 | Tab Name | Headers |
 |----------|---------|
 | `Subtasks` | `chore_id` · `chore_name` · `subtask_text` |
-| `Submissions` | `id` · `net_id` · `chore_id` · `subtasks_checked_json` · `submitted_at` · `cycle_id` · `is_late` · `note` |
-| `Extensions` | `id` · `net_id` · `cycle_id` · `extended_deadline` · `granted_by` · `granted_at` · `reason` |
+| `Submissions` | `id` · `net_id` · `chore_id` · `subtasks_checked_json` · `submitted_at` · `cycle_id` · `is_late` · `note` · `manager_review_json` · `review_reason` |
+| `ExtensionRequests` | `id` · `net_id` · `cycle_id` · `reason` · `requested_date` · `status` · `requested_at` · `reviewed_by` · `reviewed_at` · `review_reason` |
+
+Existing sheets (`Chores`, `Members`, `History`, `Availability`, `Current Assignments`) remain unchanged.
+
+### API Endpoints
+
+**GET actions** (via `?action=...&param=...`):
+
+| Action | Parameters | Returns |
+|--------|-----------|---------|
+| `getMembers` | — | All members |
+| `getChores` | — | All chores with subtasks |
+| `getAssignments` | `cycle_id` | Current assignments |
+| `getSubmissions` | `cycle_id` | All submissions for a cycle |
+| `getExtensions` | `cycle_id` | Approved extension requests |
+| `getExtensionRequests` | `cycle_id` | All extension requests |
+| `getCycleInfo` | — | Current cycle ID, deadline, now |
+
+**POST actions** (via JSON body `{action, ...}`):
+
+| Action | Body | Description |
+|--------|------|-------------|
+| `submitChore` | `net_id, chore_id, subtasks_checked, cycle_id, note` | Submit a chore |
+| `grantExtension` | `net_id, cycle_id, extended_deadline, granted_by, reason` | Grant extension (creates auto-approved request) |
+| `verifyManager` | `net_id, password` | Verify manager credentials |
+| `sendFine` | `net_id, member_name, chore_name, fine_amount, cycle_id, granted_by, note` | Send $40 fine notification |
+| `requestExtension` | `net_id, cycle_id, reason, requested_date` | Resident requests extension |
+| `approveExtension` | `request_id, decision, reviewed_by, review_reason` | Approve/deny extension request |
+| `reviewSubmission` | `submission_id, review_checks, review_reason, reviewed_by` | Save manager's subtask review |
+
+### Setup
+
+#### 1. Google Sheet
+
+Your existing sheet already has `Chores`, `Members`, `History`, `Availability`, and `Current Assignments`.
+
+Add the new tabs listed in **Required Sheets** above (just headers in row 1, data is auto-filled).
 
 Add a `role` column (column F) to the `Members` sheet. Set to `house_manager` for the manager.
 
-### 2. Apps Script
+#### 2. Apps Script
 
 1. Open your Google Sheet → **Extensions → Apps Script**
 2. Your existing `Code.gs` stays — don't change it
@@ -143,45 +233,52 @@ Add a `role` column (column F) to the `Members` sheet. Set to `house_manager` fo
 6. **Deploy → New Deployment → Web App** (Execute as: Me, Access: Anyone)
 7. Copy the deployment URL
 
-### 3. Frontend
+#### 3. Frontend Configuration
 
-In `app.js`, update line 10 and 13:
+In `app.js`, update the configuration at the top:
 
 ```js
 const API_URL = 'https://script.google.com/macros/s/YOUR_URL/exec';
 const DEMO_MODE = false;
 ```
 
-### 4. Deploy
+In `google-apps-script/Code.gs`, update the notification constants:
 
-Push to GitHub and enable **GitHub Pages** on the repository (Settings → Pages → Source: main branch).
+```js
+const CHORE_SUBMIT_URL = "https://your-github-username.github.io/chores/";
+const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/YOUR_WEBHOOK";
+```
 
-## Assignment Algorithm
+#### 4. Deploy
 
-The chore assignment uses histogram-based global bipartite matching to ensure each resident does every chore an equal number of times over the long run.
+Push to GitHub and enable **GitHub Pages** (Settings → Pages → Source: main branch).
+
+### Weekly Cycle
 
 ```mermaid
 graph TD
-    A["Build histogram<br>counts[member][chore] from all history"] --> B["Get last week's assignments<br>for 1-week exclusion"]
-    B --> C["Score every eligible<br>(member, chore) pair"]
-    C --> D["Sort all pairs<br>by score descending"]
-    D --> E["Greedy match:<br>assign highest-scored pairs,<br>skip conflicts"]
-
-    subgraph "Score Formula"
-        F["-choreCount × 10000<br>(prefer least-done chore)"]
-        G["- totalCount × 100<br>(prefer underloaded members)"]
-        H["+ importance bonus<br>(imp=30, 2nd=20, 3rd=10)"]
-        I["+ random()<br>(break ties)"]
-    end
+    A["🗓️ Sunday 9 AM<br>Trigger runs assignChores()"] --> B["📋 Current Assignments<br>sheet is populated"]
+    B --> C["📧 Manager reviews & sends<br>notifications (Discord + Email)"]
+    C --> D["✅ Residents submit chores<br>via the website all week"]
+    D --> E{"⏰ Monday 8 AM<br>Deadline"}
+    E -- "Before deadline" --> F["✅ On Time"]
+    E -- "After deadline" --> G["🔴 Late — $40 Fine"]
+    G -- "Extension request approved" --> H["✅ Extended deadline"]
 ```
 
-## Tech Stack
+### Assignment Algorithm
+
+The chore assignment uses histogram-based global bipartite matching to ensure each resident does every chore an equal number of times over the long run.
+
+### Tech Stack
 
 - **Frontend**: Vanilla HTML/CSS/JS — no build tools, no framework
 - **Backend**: Google Apps Script (serverless)
 - **Database**: Google Sheets
 - **Hosting**: GitHub Pages
 - **Notifications**: Discord webhook + Gmail
+
+---
 
 ## License
 
