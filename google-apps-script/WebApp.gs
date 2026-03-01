@@ -308,7 +308,9 @@ function handleSendFine_(ss, body) {
     finesSheet.appendRow(['id', 'net_id', 'member_name', 'chore_name', 'fine_amount', 'cycle_id', 'granted_by', 'note', 'sent_at']);
   }
 
-  const fineId = Utilities.getUuid();
+  const fineData = finesSheet.getDataRange().getValues();
+  const fineIds = fineData.slice(1).map(r => parseInt(r[0]) || 0);
+  const fineId = fineIds.length > 0 ? Math.max(...fineIds) + 1 : 1;
   finesSheet.appendRow([
     fineId, netId, memberName, choreName, fineAmount, cycleId, grantedBy, note, new Date().toISOString()
   ]);
