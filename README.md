@@ -49,8 +49,10 @@ You'll receive emails when:
 
 ### Accessing the Dashboard
 1. Navigate to the **Dashboard** tab at the top
-2. Enter your Net ID and manager password
+2. Enter your Net ID and password
 3. You'll see the full management dashboard
+
+> Both **House Managers** and the **President** can access the dashboard. The president can review all residents' chores, including the house manager's.
 
 ### Dashboard Overview
 The dashboard shows:
@@ -79,12 +81,13 @@ Both prompt you for a justification note before sending. Fine notifications are 
 - Each request shows the resident's name, reason, and requested date
 - Click **✓ Approve** or **✕ Deny** — add an optional justification note
 - Approved requests automatically extend the resident's deadline
-- **The resident receives an email** with the decision, new deadline (if approved), and your note
+- **The resident receives an email** for both approved requests and manually granted extensions
 
 ### Notifications Sent Automatically
 | Event | Email | Discord |
 |-------|-------|---------|
 | Extension approved/denied | ✅ Resident notified | — |
+| Extension manually granted | ✅ Resident notified | — |
 | Chore review emailed | ✅ Resident notified | — |
 | Fine issued | — | ✅ Resident + Treasurer pinged |
 | Weekly chore assignments | ✅ All residents | ✅ Channel message |
@@ -245,7 +248,9 @@ Your existing sheet already has `Chores`, `Members`, `History`, `Availability`, 
 
 Add the new tabs listed in **Required Sheets** above (just headers in row 1, data is auto-filled).
 
-Add a `role` column (column F) to the `Members` sheet. Set to `house_manager` for the manager.
+Add a `role` column (column F) to the `Members` sheet. Set to `house_manager` for the manager and `president` for the president. Both roles can access the dashboard.
+
+Add a `password` column (column G) for each dashboard user.
 
 #### 2. Apps Script
 
