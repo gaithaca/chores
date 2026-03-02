@@ -393,6 +393,25 @@ function demoPost(action, body) {
             demoExtensions.push(ext);
             return { success: true, data: ext };
         }
+        case 'reviewUnsubmitted': {
+            const now = new Date();
+            const sub = {
+                id: demoSubmissions.length + 1, net_id: body.net_id, chore_id: body.chore_id,
+                subtasks_checked_json: JSON.stringify(new Array((body.review_checks || []).length).fill(false)),
+                submitted_at: now.toISOString(), cycle_id: body.cycle_id, is_late: 1,
+                note: '[Manager review — no resident submission]',
+                manager_review_json: JSON.stringify(body.review_checks || []),
+                review_reason: (body.reviewed_by ? '[' + body.reviewed_by + '] ' : '') + (body.review_reason || '')
+            };
+            demoSubmissions.push(sub);
+            return { success: true, data: { submission_id: sub.id } };
+        }
+        case 'reviewSubmission':
+            return { success: true, data: { submission_id: body.submission_id } };
+        case 'sendReviewEmail':
+            return { success: true, data: { sent_to: 'demo@example.com' } };
+        case 'sendFine':
+            return { success: true, data: {} };
         default:
             return { success: false, error: 'Unknown action' };
     }
@@ -1030,7 +1049,7 @@ async function loadDashboard(cycleId) {
       <td>${statusBadge}</td>
       <td>${timeCell}</td>
       <td class="actions-cell">
-        ${latestSub ? `<button class="btn btn-view" onclick="viewSubmission('${user.net_id}', '${cycleId}')">Review</button>` : ''}
+        ${latestSub ? `<button class="btn btn-view" onclick="viewSubmission('${user.net_id}', '${cycleId}')">Review</button>` : (assignment ? `<button class="btn btn-view btn-outline" onclick="reviewUnsubmitted('${user.net_id}', '${assignment.chore_id}', '${cycleId}')">Review</button>` : '')}
         ${assignment && !extension ? `<button class="btn btn-extend" onclick="openExtensionModal('${user.net_id}', '${user.name}', '${cycleId}')">Extend</button>` : ''}
         ${assignment ? `<button class="btn btn-danger btn-small" onclick="sendFineNotification('${user.net_id}', '${user.name.replace(/'/g, "\\'")}', '${chore ? chore.name.replace(/'/g, "\\'") : ''}', '${cycleId}', this)">Fine $40</button>` : ''}
       </td>`;
@@ -1435,6 +1454,156 @@ async function modalFine(netId, memberName, choreName, cycleId, btnEl) {
     }
 }
 window.modalFine = modalFine;
+
+// ─── Review Unsubmitted Chore ─────────────────────────
+
+async function reviewUnsubmitted(netId, choreId, cycleId) {
+    const user = findMember(netId);
+    const chore = findChore(choreId);
+    if (!chore) { showToast('Chore not found', 'error'); return; }
+
+    document.getElementById('detail-modal-title').textContent =
+        `${user ? user.name : netId} — ${chore.name}`;
+
+    let html = '';
+
+    // Header: no submission
+    html += `
+    <div style="margin-bottom:16px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+      <span class="badge badge-pending">No Submission</span>
+      <span style="color:var(--text-muted); font-size:0.82rem;">Resident has not submitted this chore yet</span>
+    </div>
+
+    <table class="review-table" data-sub-id="unsub-${netId}" style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+      <thead>
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+          <th style="text-align:left; padding:8px; color:var(--text-muted); font-weight:600;">Subtask</th>
+          <th style="text-align:center; padding:8px; color:var(--text-muted); font-weight:600; width:70px;">Resident</th>
+          <th style="text-align:center; padding:8px; color:var(--text-muted); font-weight:600; width:100px;">Manager Review</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+    chore.subtasks.forEach((task, i) => {
+        html += `
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+          <td style="padding:8px; color:var(--text-primary);">${task}</td>
+          <td style="text-align:center; padding:8px;">⬜</td>
+          <td style="text-align:center; padding:8px;">
+            <input type="checkbox" name="review-unsub-${netId}-${i}" id="rcb-unsub-${netId}-${i}" style="display:none;">
+            <span onclick="var cb=document.getElementById('rcb-unsub-${netId}-${i}');cb.checked=!cb.checked;this.textContent=cb.checked?'✅':'⬜';" style="cursor:pointer;font-size:1.1rem;user-select:none;">⬜</span>
+          </td>
+        </tr>`;
+    });
+
+    html += `</tbody></table>`;
+
+    const escapedName = (user ? user.name : netId).replace(/'/g, "\\'");
+    const escapedChore = chore.name.replace(/'/g, "\\'");
+
+    html += `
+    <div style="margin-top:16px; padding:14px 16px; background:rgba(255,255,255,0.03); border-radius:10px; border:1px solid rgba(255,255,255,0.08);">
+      <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:6px;">Manager Review Notes (optional)</label>
+      <textarea id="review-reason-input" rows="2" placeholder="e.g. Chore was not completed at all..." style="width:100%; margin-bottom:10px; font-size:0.85rem;"></textarea>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <button class="btn btn-primary btn-small" id="save-review-btn" onclick="saveUnsubmittedReview('${netId}', '${choreId}', '${cycleId}', ${chore.subtasks.length})">💾 Save Review</button>
+        <button class="btn btn-email btn-small" id="email-unsub-review-btn" onclick="emailUnsubmittedReview('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', ${chore.subtasks.length}, this)">📧 Email Review</button>
+        <button class="btn btn-danger btn-small" onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', this)">Fine $40</button>
+        <span id="review-save-status" style="font-size:0.82rem;"></span>
+      </div>
+    </div>`;
+
+    document.getElementById('detail-modal-body').innerHTML = html;
+    document.getElementById('detail-modal').classList.remove('hidden');
+}
+window.reviewUnsubmitted = reviewUnsubmitted;
+
+async function saveUnsubmittedReview(netId, choreId, cycleId, subtaskCount) {
+    const reviewChecks = [];
+    for (let i = 0; i < subtaskCount; i++) {
+        const cb = document.querySelector(`input[name="review-unsub-${netId}-${i}"]`);
+        reviewChecks.push(cb ? cb.checked : false);
+    }
+
+    const reviewReason = document.getElementById('review-reason-input').value.trim();
+    const btn = document.getElementById('save-review-btn');
+    const statusEl = document.getElementById('review-save-status');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Saving...';
+    statusEl.textContent = '';
+
+    const res = await apiPost('reviewUnsubmitted', {
+        net_id: netId,
+        chore_id: choreId,
+        cycle_id: cycleId,
+        review_checks: reviewChecks,
+        review_reason: reviewReason,
+        reviewed_by: managerNetId
+    });
+
+    if (res.success) {
+        btn.innerHTML = '💾 Save Review';
+        btn.disabled = false;
+        statusEl.innerHTML = '<span style="color:var(--green);">✓ Review saved</span>';
+        showToast('Review saved successfully', 'success');
+        // Reload dashboard so the row now shows as submitted
+        setTimeout(() => loadDashboard(viewingCycleId), 1500);
+    } else {
+        btn.innerHTML = '💾 Save Review';
+        btn.disabled = false;
+        statusEl.innerHTML = `<span style="color:var(--cornell-red-light);">${res.error || 'Failed to save'}</span>`;
+        showToast(res.error || 'Failed to save review', 'error');
+    }
+}
+window.saveUnsubmittedReview = saveUnsubmittedReview;
+
+async function emailUnsubmittedReview(netId, memberName, choreName, cycleId, subtaskCount, btnEl) {
+    const chore = appData.chores.find(c => {
+        const assignment = appData.members.find(m => m.net_id === netId);
+        return c.name === choreName || c.chore_id === arguments[5]; // fallback
+    });
+
+    const subtasks = [];
+    for (let i = 0; i < subtaskCount; i++) {
+        const table = document.querySelector(`table[data-sub-id="unsub-${netId}"]`);
+        const rows = table ? table.querySelectorAll('tbody tr') : [];
+        if (rows[i]) {
+            const cells = rows[i].querySelectorAll('td');
+            const name = cells[0] ? cells[0].textContent.trim() : `Subtask ${i + 1}`;
+            const cb = document.querySelector(`input[name="review-unsub-${netId}-${i}"]`);
+            const managerDone = cb ? cb.checked : false;
+            subtasks.push({ name, resident: false, manager: managerDone });
+        }
+    }
+
+    const reviewReason = document.getElementById('review-reason-input')?.value.trim() || '';
+
+    btnEl.disabled = true;
+    const origText = btnEl.innerHTML;
+    btnEl.innerHTML = '<span class="loading-spinner"></span> Sending...';
+
+    const res = await apiPost('sendReviewEmail', {
+        net_id: netId,
+        member_name: memberName,
+        chore_name: choreName,
+        subtasks: subtasks,
+        review_reason: reviewReason,
+        reviewed_by: managerNetId,
+        cycle_id: cycleId
+    });
+
+    if (res.success) {
+        btnEl.innerHTML = '✓ Sent';
+        btnEl.style.cssText = 'background:var(--green);color:#fff;pointer-events:none;';
+        showToast(`Review emailed to ${res.data.sent_to}`, 'success');
+    } else {
+        btnEl.disabled = false;
+        btnEl.innerHTML = origText;
+        showToast(res.error || 'Failed to send email', 'error');
+    }
+}
+window.emailUnsubmittedReview = emailUnsubmittedReview;
 
 document.getElementById('detail-modal-close').addEventListener('click', () => {
     document.getElementById('detail-modal').classList.add('hidden');

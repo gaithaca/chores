@@ -148,6 +148,9 @@ function doPost(e) {
       case 'reviewSubmission':
         return apiJsonResponse(handleReviewSubmission_(ss, body));
 
+      case 'reviewUnsubmitted':
+        return apiJsonResponse(handleReviewUnsubmitted_(ss, body));
+
       case 'sendReviewEmail':
         return apiJsonResponse(handleSendReviewEmail_(ss, body));
 
@@ -887,6 +890,50 @@ function handleReviewSubmission_(ss, body) {
 
   if (!found) return { success: false, error: 'Submission not found.' };
   return { success: true, data: { submission_id: submissionId } };
+}
+
+// ─── Manager Review for Unsubmitted Chore ─────────────
+/**
+ * Creates a pseudo-submission for a chore that was never submitted by the resident,
+ * then attaches the manager's review data. This keeps the data model consistent.
+ * body: { net_id, chore_id, cycle_id, review_checks, review_reason, reviewed_by }
+ */
+function handleReviewUnsubmitted_(ss, body) {
+  var sheet = ss.getSheetByName(SUBMISSIONS_SHEET_NAME);
+  if (!sheet) return { success: false, error: "'" + SUBMISSIONS_SHEET_NAME + "' sheet not found." };
+
+  var netId = String(body.net_id || '').trim();
+  var choreId = String(body.chore_id || '').trim();
+  var cycleId = body.cycle_id || '';
+  if (!netId || !choreId) return { success: false, error: 'Missing net_id or chore_id.' };
+
+  var now = new Date();
+  var data = sheet.getDataRange().getValues();
+  var ids = data.slice(1).map(function(r) { return parseInt(r[0]) || 0; });
+  var id = ids.length > 0 ? Math.max.apply(null, ids) + 1 : 1;
+
+  var reviewChecks = body.review_checks || [];
+  var subtasksJson = JSON.stringify(new Array(reviewChecks.length).fill(false));
+  var reviewJson = JSON.stringify(reviewChecks);
+  var reviewReason = String(body.review_reason || '').trim();
+  var reviewedBy = String(body.reviewed_by || '').trim();
+  var fullReason = reviewedBy ? '[' + reviewedBy + '] ' + reviewReason : reviewReason;
+
+  // Submissions columns: id | net_id | chore_id | subtasks_checked_json | submitted_at | cycle_id | is_late | note | manager_review_json | review_reason
+  sheet.appendRow([
+    id,
+    netId,
+    choreId,
+    subtasksJson,
+    now.toISOString(),
+    cycleId,
+    1,
+    '[Manager review — no resident submission]',
+    reviewJson,
+    fullReason
+  ]);
+
+  return { success: true, data: { submission_id: id } };
 }
 
 // ─── Send Review Email ────────────────────────────────
