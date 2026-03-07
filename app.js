@@ -1036,6 +1036,21 @@ async function loadDashboard(cycleId) {
     // Render pending extension requests panel
     renderExtensionRequests(extRequests, cycleId);
 
+    // Build a merged member list: current residents + anyone in assignments/submissions
+    // who isn't a current member (e.g. former residents from History)
+    const currentNetIds = new Set(residents.map(r => r.net_id));
+    const displayMembers = [...residents];
+    assignments.forEach(a => {
+        if (!currentNetIds.has(a.net_id)) {
+            displayMembers.push({
+                net_id: a.net_id,
+                name: a.member_name || a.net_id,
+                role: 'resident'
+            });
+            currentNetIds.add(a.net_id);
+        }
+    });
+
     // Stats
     const submitted = submissions.length;
     const late = submissions.filter(s => parseInt(s.is_late) === 1).length;
@@ -1043,7 +1058,7 @@ async function loadDashboard(cycleId) {
     const submittedNetIds = submissions.map(s => String(s.net_id).trim());
     const pending = assignedNetIds.filter(id => !submittedNetIds.includes(id)).length;
 
-    document.getElementById('stat-total').textContent = residents.length;
+    document.getElementById('stat-total').textContent = displayMembers.length;
     document.getElementById('stat-submitted').textContent = submitted;
     document.getElementById('stat-late').textContent = late;
     document.getElementById('stat-pending').textContent = pending;
@@ -1052,7 +1067,7 @@ async function loadDashboard(cycleId) {
     const tbody = document.getElementById('submissions-tbody');
     tbody.innerHTML = '';
 
-    residents.forEach(user => {
+    displayMembers.forEach(user => {
         const assignment = assignments.find(a => a.net_id === user.net_id);
         // Get ALL submissions for this user, sorted newest first
         const userSubs = submissions
@@ -1060,7 +1075,8 @@ async function loadDashboard(cycleId) {
             .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at));
         const latestSub = userSubs.length > 0 ? userSubs[0] : null;
         const extension = extensions.find(e => String(e.net_id).trim() === user.net_id);
-        const chore = assignment ? findChore(assignment.chore_id) : null;
+        // Use findChore for full chore data, but fall back to assignment's chore_name from History
+        const chore = assignment ? (findChore(assignment.chore_id) || { name: assignment.chore_name, chore_id: assignment.chore_id, subtasks: [] }) : null;
 
         const tr = document.createElement('tr');
 
