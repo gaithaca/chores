@@ -20,6 +20,7 @@ let appData = {
 };
 
 let currentCycleId = '';
+let residentViewCycleId = '';
 let currentUser = null;
 let currentChore = null;
 let managerNetId = null;
@@ -460,9 +461,56 @@ async function initApp() {
     }
 
     currentCycleId = appData.cycleInfo ? appData.cycleInfo.cycle_id : '';
+    residentViewCycleId = currentCycleId;
     updateCycleDisplay();
+    updateResidentCycleNav();
     appReadyResolve(); // Signal that data is loaded
 }
+
+// ─── Resident Week Navigation ─────────────────────────
+
+function shiftCycleId(cycleId, days) {
+    const d = new Date(cycleId + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function updateResidentCycleNav() {
+    document.getElementById('resident-cycle-text').textContent = formatCycleDisplay(residentViewCycleId);
+    // Disable ▶ when on current week (can't submit for future weeks)
+    const nextBtn = document.getElementById('resident-next-week');
+    nextBtn.disabled = residentViewCycleId >= currentCycleId;
+    nextBtn.style.opacity = nextBtn.disabled ? '0.3' : '1';
+}
+
+document.getElementById('resident-prev-week').addEventListener('click', () => {
+    residentViewCycleId = shiftCycleId(residentViewCycleId, -7);
+    updateResidentCycleNav();
+    // If user is already identified, re-fetch their assignment for the new week
+    if (currentUser) {
+        stepChore.classList.add('hidden');
+        stepSubtasks.classList.add('hidden');
+        stepConfirmation.classList.add('hidden');
+        currentChore = null;
+        handleNetIdSubmit();
+    }
+});
+
+document.getElementById('resident-next-week').addEventListener('click', () => {
+    if (residentViewCycleId >= currentCycleId) return;
+    residentViewCycleId = shiftCycleId(residentViewCycleId, 7);
+    updateResidentCycleNav();
+    if (currentUser) {
+        stepChore.classList.add('hidden');
+        stepSubtasks.classList.add('hidden');
+        stepConfirmation.classList.add('hidden');
+        currentChore = null;
+        handleNetIdSubmit();
+    }
+});
 
 function updateCycleDisplay() {
     if (!appData.cycleInfo) return;
@@ -591,11 +639,12 @@ async function handleNetIdSubmit() {
 
     currentUser = user;
 
-    // Fetch assignments, submissions, and extension requests for current cycle
+    // Fetch assignments, submissions, and extension requests for the viewed cycle
+    const viewCycleId = residentViewCycleId || currentCycleId;
     const [assignRes, subRes, extReqRes] = await Promise.all([
-        apiGet('getAssignments', { cycle_id: currentCycleId }),
-        apiGet('getSubmissions', { cycle_id: currentCycleId }),
-        apiGet('getExtensionRequests', { cycle_id: currentCycleId })
+        apiGet('getAssignments', { cycle_id: viewCycleId }),
+        apiGet('getSubmissions', { cycle_id: viewCycleId }),
+        apiGet('getExtensionRequests', { cycle_id: viewCycleId })
     ]);
     const assignments = assignRes.success ? assignRes.data : [];
     const submissions = subRes.success ? subRes.data : [];
@@ -619,7 +668,7 @@ async function handleNetIdSubmit() {
             choreAssignmentInfo.innerHTML = `
         <div class="chore-info-card">
           <div class="chore-name">${chore.name}</div>
-          <div class="chore-detail">Assigned to ${user.name} this week</div>
+          <div class="chore-detail">Assigned to ${user.name} · ${formatCycleDisplay(viewCycleId)}</div>
           <a href="#" class="ext-request-link${userExtReq.length > 0 ? ' hidden' : ''}" id="request-ext-link">Need more time? Request an extension →</a>
           ${buildExtRequestStatusHTML(userExtReq)}
           <div id="ext-request-form" class="hidden" style="margin-top:10px;">
@@ -644,7 +693,7 @@ async function handleNetIdSubmit() {
             const extDateInput = document.getElementById('ext-req-date');
 
             // Default date: 2 days from cycle date
-            const defaultDate = new Date(currentCycleId + 'T00:00:00');
+            const defaultDate = new Date(viewCycleId + 'T00:00:00');
             defaultDate.setDate(defaultDate.getDate() + 2);
             extDateInput.value = defaultDate.toISOString().split('T')[0];
 
@@ -672,7 +721,7 @@ async function handleNetIdSubmit() {
 
                 const res = await apiPost('requestExtension', {
                     net_id: netId,
-                    cycle_id: currentCycleId,
+                    cycle_id: viewCycleId,
                     reason: reason,
                     requested_date: requestedDate
                 });
@@ -695,8 +744,8 @@ async function handleNetIdSubmit() {
         // Not assigned — let them pick a chore
         choreAssignmentInfo.innerHTML = `
       <div class="chore-info-card no-chore">
-        <div class="chore-name">No chore assigned this week</div>
-        <div class="chore-detail">You can still submit a chore if needed. Select one below:</div>
+        <div class="chore-name">No chore assigned</div>
+        <div class="chore-detail">${formatCycleDisplay(viewCycleId)} — You can still submit a chore if needed. Select one below:</div>
       </div>${resubmitNotice}`;
         choreSelectWrapper.classList.remove('hidden');
 
@@ -815,7 +864,7 @@ async function handleSubmitChore() {
         net_id: currentUser.net_id,
         chore_id: currentChore.chore_id,
         subtasks_checked: subtasksChecked,
-        cycle_id: currentCycleId,
+        cycle_id: residentViewCycleId || currentCycleId,
         note: submissionNote
     });
 
@@ -880,6 +929,8 @@ function resetResidentView() {
     netidInput.value = '';
     currentUser = null;
     currentChore = null;
+    residentViewCycleId = currentCycleId;
+    updateResidentCycleNav();
     stepChore.classList.add('hidden');
     stepSubtasks.classList.add('hidden');
     stepConfirmation.classList.add('hidden');
