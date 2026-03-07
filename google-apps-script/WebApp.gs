@@ -172,15 +172,25 @@ function apiJsonResponse(data) {
 
 /**
  * Normalizes a cycle_id to just "yyyy-MM-dd".
+ * Handles: Date objects, "yyyy-MM-dd" strings, and ugly JS date strings
+ * like "Mon Feb 23 2026 00:00:00 GMT-0500" (from String(dateObj)).
  */
 function normalizeCycleId_(val) {
   if (!val) return '';
   if (val instanceof Date && !isNaN(val.getTime())) {
     return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
-  const str = String(val).trim();
-  const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : str;
+  var str = String(val).trim();
+  var match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  // Fallback: try parsing non-standard date strings (e.g. "Mon Feb 23 2026...")
+  try {
+    var parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+      return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    }
+  } catch (e) { /* ignore parse errors */ }
+  return str;
 }
 
 // ─── Data Fetchers ────────────────────────────────────

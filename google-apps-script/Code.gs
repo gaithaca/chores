@@ -238,7 +238,15 @@ function sendNotificationsAndLogHistory() {
   membersData.forEach(m => { memberMap[m.name] = { id: m.id, email: m.email }; });
   choresData.forEach(c => { choreMap[c.choreName] = { id: c.id, notes: c.notes }; });
 
-  const weekOfStr = data[1][3] ? String(data[1][3]).trim() : "";
+  // Properly format the "Week Of" date — data[1][3] is often a Date object
+  // because Google Sheets auto-parses "2026-02-23" into a Date.
+  var rawWeekOf = data[1][3];
+  var weekOfStr = '';
+  if (rawWeekOf instanceof Date && !isNaN(rawWeekOf.getTime())) {
+    weekOfStr = Utilities.formatDate(rawWeekOf, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  } else if (rawWeekOf) {
+    weekOfStr = String(rawWeekOf).trim();
+  }
   if (!weekOfStr) {
       SpreadsheetApp.getUi().alert(`Could not determine 'Week Of' date from '${CURRENT_CHORES_SHEET}' (expected in cell D2). Cannot log history accurately.`);
       return;
