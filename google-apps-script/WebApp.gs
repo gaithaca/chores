@@ -421,9 +421,10 @@ function fetchAssignments_(ss, cycleId) {
     weekOf = String(rawWeekOf).trim();
   }
 
-  // If a specific cycle was requested and it doesn't match, return empty
+  // If a specific cycle was requested and it doesn't match the current week,
+  // fall back to the History sheet for past weeks
   if (cycleId && weekOf && cycleId !== weekOf) {
-    return [];
+    return fetchAssignmentsFromHistory_(ss, cycleId);
   }
 
   const assignments = [];
@@ -446,6 +447,37 @@ function fetchAssignments_(ss, cycleId) {
         chore_id: chore.chore_id,
         member_name: member.name,
         chore_name: chore.name
+      });
+    }
+  }
+
+  return assignments;
+}
+
+/**
+ * Reads the History sheet and returns assignments for a specific past cycle.
+ * History columns: week_start_date(0) | member_id(1) | chore_id(2) |
+ *                  member_name(3) | chore_name(4) | timestamp(5)
+ * Returns data in the same format as fetchAssignments_.
+ */
+function fetchAssignmentsFromHistory_(ss, cycleId) {
+  var sheet = ss.getSheetByName(HISTORY_SHEET);
+  if (!sheet) return [];
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+
+  var normalizedCycleId = normalizeCycleId_(cycleId);
+  var assignments = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var rowDate = normalizeCycleId_(data[i][0]);
+    if (rowDate === normalizedCycleId) {
+      assignments.push({
+        cycle_id: rowDate,
+        net_id: String(data[i][1]).trim(),
+        chore_id: String(data[i][2]).trim(),
+        member_name: String(data[i][3]).trim(),
+        chore_name: String(data[i][4]).trim()
       });
     }
   }
