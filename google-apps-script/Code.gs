@@ -779,8 +779,18 @@ function sendDiscordNotification(assignmentsToNotify, upcomingMondayDate) {
         subjectDueDateStrDiscord = `Mon, ${formatDateWithOrdinal(upcomingMondayDate)}`;
     }
 
+    // Funky Gorge Monster Intros
+    const introMessages = [
+        `I, the mighty Gorge Monster, have returned from the depths! Those who abide by my rule shall receive my blessings, but those who defy me will feel the full force of my wrath.`,
+        `Tremble before the Gorge Monster! My hunger for cleanliness is insatiable. Fulfill these demands, lest you face the consequences!`,
+        `The waters of the gorge churn, and from them, I emerge to judge your tidiness! Fail these tasks, and be banished to the murky depths!`,
+        `Gorge Monster here! I'm watching you... keep the house clean or my vengeance will be swift and terrible.`,
+        `Hear me, mortals! The Gorge Monster commands you to carry out these sacred duties. Disobey at your own peril!`
+    ];
+    const randomIntro = introMessages[Math.floor(Math.random() * introMessages.length)];
+
     // Construct Discord message
-    let message = `I, the mighty Gorge Monster, have been called forth once again, this time with a new algorithm. Those who abide by my rule shall receive my blessings, but those who defy me will feel the full force of my wrath. Here are my commands for this week \n **${HOUSE_NAME} Chore Assignments (Due: ${subjectDueDateStrDiscord})** \n@everyone\n------------------------------------\n`;
+    let message = `${randomIntro}\n\n**${HOUSE_NAME} Chore Assignments (Due: ${subjectDueDateStrDiscord})**\n@everyone\n------------------------------------\n`;
     assignmentsToNotify.forEach(a => {
         message += `**${a.member.name}**: ${a.chore.choreName}${a.chore.notes ? ` (${a.chore.notes})` : ''}\n`;
     });
