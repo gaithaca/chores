@@ -31,181 +31,271 @@ function onOpen() {
 }
 
 
-// ---- CHORE ASSIGNMENT ----
+// ---- CHORE ASSIGNMENT (Robyn's Algorithm) ----
 /**
- * Main function to assign chores based on availability, history, and importance.
- * Populates 'Current Assignments' but DOES NOT log to 'History' sheet.
- */
-// Changes:
-//   1. Global bipartite matching (not sequential per-chore)
-//   2. Histogram-based scoring for uniform distribution
-//   3. Only 1-week exclusion (not 2 weeks)
-//   4. Importance still prioritized (via score bonus)
-// =====================================================
-
-
-/**
- * Main function to assign chores using histogram-based global matching.
- * Builds a full count matrix from ALL history, scores every eligible
- * (member, chore) pair, then greedily assigns the best matches.
- *
- * Important chores still get priority via a score bonus, ensuring
- * they are always assigned first.
+ * Assign exactly one chore to each eligible person.
+ * Chores are considered in priority order (random within each priority bucket).
+ * For each chore, pick among remaining people the ones with the minimum normalized count
+ * for that chore; break ties by least recent.
  */
 function assignChores() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const allChores = getChores(ss);
-  const allActiveMembers = getActiveMembers(ss);
-  const upcomingMonday = getUpcomingMonday();
-  const upcomingMondayStr = Utilities.formatDate(upcomingMonday, Session.getScriptTimeZone(), "yyyy-MM-dd");
-  const availabilityData = getAvailability(ss, upcomingMondayStr);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const upcomingMonday = getUpcomingMonday();
 
-  // ── 1. Build full histogram from ALL history ──
-  const allHistory = getHistory(ss, 0);
-  const choreCounts = {};  // choreCounts[memberId][choreId] = count
-  const totalCounts = {};  // totalCounts[memberId] = total chores done
+    // core algorithm
+    const chores = getChoresByPriority(ss);
+    let people = getAvailablePeople(ss, upcomingMonday); // NetIDs
 
-  // Initialize for all active members
-  allActiveMembers.forEach(m => {
-    choreCounts[m.id] = {};
-    totalCounts[m.id] = 0;
-  });
+    const assignments = []; // { chore, netId }
 
-  allHistory.forEach(h => {
-    if (!choreCounts[h.memberId]) choreCounts[h.memberId] = {};
-    if (!choreCounts[h.memberId][h.choreId]) choreCounts[h.memberId][h.choreId] = 0;
-    choreCounts[h.memberId][h.choreId]++;
-    if (!totalCounts[h.memberId]) totalCounts[h.memberId] = 0;
-    totalCounts[h.memberId]++;
-  });
+    for (const chore of chores) {
+        if (people.length === 0) break;
 
-  // ── 2. Get LAST WEEK only for exclusion ──
-  const lastWeekHistory = getHistory(ss, 1);
-  const lastWeekChore = {};  // lastWeekChore[memberId] = choreId
-  lastWeekHistory.forEach(h => {
-    lastWeekChore[h.memberId] = h.choreId;
-  });
+        const eligible = getEligiblePeople(ss, chore, people);
+        if (eligible.length === 0) continue;
 
-  // ── 3. Availability lookup ──
-  const availMap = {};
-  availabilityData.forEach(av => {
-    availMap[av.memberId] = { status: av.available, notes: av.notes };
-  });
+        const chosen =
+            (eligible.length === 1)
+                ? eligible[0]
+                : getLeastRecent(ss, chore.id, eligible);
 
-  // Eligible members = available and (Active or Visitor)
-  const eligibleMembers = allActiveMembers.filter(member => {
-    const memberAvail = availMap[member.id];
-    return memberAvail && (memberAvail.status === "Yes" || memberAvail.status === "Yes (No Sunday)");
-  });
+        assignments.push({ chore: chore, netId: chosen });
 
-  // ── 4. Importance bonus mapping ──
-  function importanceBonus(chore) {
-    const imp = chore.importance.toLowerCase();
-    if (imp === "imp") return 30;
-    if (imp === "2nd imp") return 20;
-    if (imp === "3rd imp") return 10;
-    return 0;
-  }
-
-  // ── 5. Build scored (member, chore) candidates ──
-  const candidates = [];
-
-  eligibleMembers.forEach(member => {
-    const memberAvail = availMap[member.id];
-
-    allChores.forEach(chore => {
-      // Hard exclude: member did this exact chore LAST WEEK
-      if (String(lastWeekChore[member.id]) === String(chore.id)) return;
-
-      // Sunday restriction
-      if (chore.choreName.toUpperCase().includes("SUNDAY") &&
-          memberAvail.status === "Yes (No Sunday)") return;
-
-      // ── SCORE FORMULA ──
-      const choreCount = (choreCounts[member.id][chore.id]) || 0;
-      const total = totalCounts[member.id] || 0;
-
-      const score = -choreCount * 10000
-                    - total * 100
-                    + importanceBonus(chore)
-                    + Math.random();
-
-      candidates.push({
-        member: member,
-        chore: chore,
-        score: score,
-        choreCount: choreCount,
-        totalCount: total
-      });
-    });
-  });
-
-  // ── 6. Sort by score descending (best matches first) ──
-  candidates.sort((a, b) => b.score - a.score);
-
-  // ── 7. Greedy bipartite matching ──
-  const assignments = [];
-  const assignedMemberIds = new Set();
-  const assignedChoreIds = new Set();
-
-  candidates.forEach(cand => {
-    if (assignedMemberIds.has(cand.member.id)) return;
-    if (assignedChoreIds.has(cand.chore.id)) return;
-
-    assignments.push({ chore: cand.chore, member: cand.member });
-    assignedMemberIds.add(cand.member.id);
-    assignedChoreIds.add(cand.chore.id);
-  });
-
-  // ── 8. Build output for ALL active members ──
-  const outputRows = [];
-  allActiveMembers.forEach(member => {
-    const assignmentInfo = assignments.find(a => a.member.id == member.id);
-    const memberAvail = availMap[member.id];
-
-    if (assignmentInfo) {
-      outputRows.push({
-        memberName: member.name,
-        choreOrStatus: assignmentInfo.chore.choreName,
-        choreNotes: assignmentInfo.chore.notes || ""
-      });
-    } else {
-      let statusNote = "Available, No Chore Assigned";
-      if (memberAvail) {
-        if (memberAvail.status === "No") {
-          statusNote = memberAvail.notes || "Unavailable (No specific note)";
-        } else if (memberAvail.status !== "Yes" && memberAvail.status !== "Yes (No Sunday)") {
-          statusNote = `Status: ${memberAvail.status}` + (memberAvail.notes ? ` (${memberAvail.notes})` : "");
-        }
-      } else {
-        statusNote = "Availability Not Provided";
-      }
-      outputRows.push({
-        memberName: member.name,
-        choreOrStatus: statusNote,
-        choreNotes: ""
-      });
+        people = people.filter(id => id !== chosen);
     }
-  });
 
-  outputRows.sort((a, b) => a.memberName.localeCompare(b.memberName));
+    // formatting
+    const weekStr = Utilities.formatDate(
+        upcomingMonday,
+        Session.getScriptTimeZone(),
+        "yyyy-MM-dd"
+    );
 
-  // ── 9. Update sheet & alert ──
-  if (outputRows.length > 0) {
-    updateCurrentAssignmentsSheet(ss, outputRows, upcomingMondayStr);
+    const members = getActiveMembers(ss);
+    const outputRows = [];
+
+    // Build availability map for this week
+    const availabilitySheet = ss.getSheetByName(AVAIL_SHEET);
+    const availabilityData = availabilitySheet.getDataRange().getValues();
+    const availabilityMap = {}; // netId -> note
+
+    const targetTime = new Date(upcomingMonday).setHours(0, 0, 0, 0);
+
+    for (let i = 1; i < availabilityData.length; i++) {
+        const rowDate = availabilityData[i][0];
+        const netId = String(availabilityData[i][1]).trim();
+        const status = String(availabilityData[i][2]).trim().toLowerCase();
+        const note = availabilityData[i][3] || "";
+
+        if (!(rowDate instanceof Date)) continue;
+
+        const rowTime = new Date(rowDate).setHours(0, 0, 0, 0);
+
+        if (rowTime === targetTime && netId) {
+            availabilityMap[netId] = note;
+        }
+    }
+
+    members.forEach(member => {
+        const assignment = assignments.find(a => a.netId === member.id);
+
+        if (assignment) {
+            const counts = getNormalizedCounts(
+                ss,
+                assignment.chore.id,
+                [member.id]
+            );
+            const choreCount = counts[member.id] || 0;
+
+            outputRows.push({
+                memberName: member.name,
+                choreOrStatus: assignment.chore.choreName,
+                choreCount: choreCount,
+                choreNotes: assignment.chore.notes || ""
+            });
+        } else {
+            const note = availabilityMap[member.id] || "";
+            const displayNote = note ? note : "No specific note.";
+
+            outputRows.push({
+                memberName: member.name,
+                choreOrStatus: `Unavailable (${displayNote})`,
+                choreCount: "",
+                choreNotes: ""
+            });
+        }
+    });
+
+    outputRows.sort((a, b) =>
+        a.memberName.localeCompare(b.memberName)
+    );
+
+    updateCurrentAssignmentsSheet(ss, outputRows, weekStr);
+
     const assignedCount = assignments.length;
-    const totalMembers = allActiveMembers.length;
+    const totalMembers = members.length;
     SpreadsheetApp.getUi().alert(
-      `Assignments processed for week starting ${upcomingMondayStr}!\n\n` +
-      `${assignedCount} chores assigned out of ${allChores.length} chores and ${totalMembers} active members.\n\n` +
-      `Review in '${CURRENT_CHORES_SHEET}', then run 'Send Notifications & Log History' when ready.`
+      `Assignments processed for week starting ${weekStr}!\n\n` +
+      `${assignedCount} chores assigned out of ${chores.length} chores and ${totalMembers} members.`
     );
-  } else {
-    SpreadsheetApp.getUi().alert(
-      `No active members found or no assignments could be made for week starting ${upcomingMondayStr}. ` +
-      `Check Members, Availability, and Chores sheets.`
-    );
-  }
+}
+
+
+/**
+ * Fisher–Yates shuffle (in-place).
+ */
+function shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+}
+
+/**
+ * Returns chores ordered by priority (1 first, then 2, then 3)
+ * with random order within each priority level.
+ */
+function getChoresByPriority(ss) {
+    const chores = getChores(ss);
+    const buckets = { 1: [], 2: [], 3: [] };
+
+    chores.forEach(ch => {
+        const level = Number(ch.importance); // 1, 2, or 3
+        if (buckets[level]) {
+            buckets[level].push(ch);
+        }
+    });
+
+    shuffleInPlace(buckets[1]);
+    shuffleInPlace(buckets[2]);
+    shuffleInPlace(buckets[3]);
+
+    return [...buckets[1], ...buckets[2], ...buckets[3]];
+}
+
+/**
+ * Returns a randomly sorted array of netIDs corresponding to people
+ * that marked 'Yes' on the Availability sheet for the given week.
+ */
+function getAvailablePeople(ss, upcomingMonday) {
+    const sheet = ss.getSheetByName(AVAIL_SHEET);
+    if (!sheet) return [];
+
+    const data = sheet.getDataRange().getValues();
+    const yesPeople = [];
+
+    const targetTime = new Date(upcomingMonday).setHours(0, 0, 0, 0);
+
+    for (let i = 1; i < data.length; i++) {
+        const dateValue = data[i][0];
+        const memberId = String(data[i][1]).trim();
+        const status = String(data[i][2]).trim().toLowerCase();
+
+        if (!(dateValue instanceof Date)) continue;
+
+        const rowTime = new Date(dateValue).setHours(0, 0, 0, 0);
+
+        if (rowTime === targetTime && status === "yes" && memberId) {
+            yesPeople.push(memberId);
+        }
+    }
+
+    shuffleInPlace(yesPeople);
+    return yesPeople;
+}
+
+/**
+ * Returns a randomly ordered list of NetIDs in `people` who are eligible for `chore`
+ * AND have the minimum normalized count for that chore among eligible people.
+ * Eligible = in `people` AND has NOT done this chore in the last 2 weeks.
+ */
+function getEligiblePeople(ss, chore, people) {
+    const choreId = String(chore.id).trim();
+
+    // exclude people who did it in last n weeks
+    const n = 2;
+    const recent = getHistory(ss, n);
+
+    const eligible = [];
+    for (let i = 0; i < people.length; i++) {
+        const netId = String(people[i]).trim();
+
+        const didRecently = recent.some(h =>
+            String(h.memberId).trim() === netId &&
+            String(h.choreId).trim() === choreId
+        );
+
+        if (!didRecently) eligible.push(netId);
+    }
+
+    if (eligible.length <= 1) return eligible;
+
+    shuffleInPlace(eligible);
+
+    const counts = getNormalizedCounts(ss, choreId, eligible);
+
+    let minVal = Infinity;
+    let best = [];
+
+    for (let i = 0; i < eligible.length; i++) {
+        const netId = eligible[i];
+        const count = Number(counts[netId]) || 0;
+
+        // immediate return if count is 0
+        if (count === 0) return [netId];
+
+        if (count < minVal) {
+            minVal = count;
+            best = [netId];
+        } else if (count === minVal) {
+            best.push(netId);
+        }
+    }
+
+    return best;
+}
+
+/**
+ * Returns the NetID in `people` who has gone the longest without doing
+ * the given `choreId`, according to the History sheet.
+ * If a person has never done the chore, they are returned immediately.
+ */
+function getLeastRecent(ss, choreId, people) {
+    shuffleInPlace(people);
+    if (!people || people.length === 0) return null;
+    if (people.length === 1) return people[0];
+
+    const sh = ss.getSheetByName(HISTORY_SHEET);
+    if (!sh) return people[0];
+
+    const data = sh.getDataRange().getValues();
+    const choreKey = String(choreId).trim();
+
+    let bestPerson = null;
+    let bestDate = null;
+
+    for (let i = 0; i < people.length; i++) {
+        const netId = String(people[i]).trim();
+        let mostRecent = null;
+
+        for (let r = 1; r < data.length; r++) {
+            if (String(data[r][1]).trim() === netId &&
+                String(data[r][2]).trim() === choreKey) {
+                const d = new Date(data[r][0]);
+                if (!mostRecent || d > mostRecent) {
+                    mostRecent = d;
+                }
+            }
+        }
+        if (!mostRecent) return netId;
+
+        if (!bestDate || mostRecent < bestDate) {
+            bestPerson = netId;
+            bestDate = mostRecent;
+        }
+    }
+
+    return bestPerson;
 }
 
 
@@ -214,188 +304,193 @@ function assignChores() {
  * Reads 'Current Assignments', logs ACTUAL assignments to 'History', and sends notifications.
  */
 function sendNotificationsAndLogHistory() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(CURRENT_CHORES_SHEET);
-  if (!sheet) {
-    SpreadsheetApp.getUi().alert(`'${CURRENT_CHORES_SHEET}' sheet not found. Please run 'Assign Chores' first.`);
-    return;
-  }
-  const data = sheet.getDataRange().getValues();
-  if (data.length < 2) {
-    SpreadsheetApp.getUi().alert(`No data found in the '${CURRENT_CHORES_SHEET}' sheet.`);
-    return;
-  }
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CURRENT_CHORES_SHEET);
+    if (!sheet) {
+        SpreadsheetApp.getUi().alert(`'${CURRENT_CHORES_SHEET}' sheet not found. Please run 'Assign Chores' first.`);
+        return;
+    }
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+        SpreadsheetApp.getUi().alert(`No data found in the '${CURRENT_CHORES_SHEET}' sheet.`);
+        return;
+    }
 
-  // --- Prepare Data for History Logging and Notifications ---
-  const historyToSave = [];
-  const assignmentsForNotification = [];
+    // --- Prepare Data for History Logging and Notifications ---
+    const historyToSave = [];
+    const assignmentsForNotification = [];
 
-  // Fetch Member and Chore data to look up IDs by Name
-  const membersData = getActiveMembers(ss);
-  const choresData = getChores(ss);
-  const memberMap = {}; // Map: Name -> { id, email }
-  const choreMap = {};  // Map: ChoreName -> { id, notes }
-  membersData.forEach(m => { memberMap[m.name] = { id: m.id, email: m.email }; });
-  choresData.forEach(c => { choreMap[c.choreName] = { id: c.id, notes: c.notes }; });
+    // Fetch Member and Chore data to look up IDs by Name
+    const membersData = getActiveMembers(ss);
+    const choresData = getChores(ss);
+    const memberMap = {}; // Map: Name -> { id, email }
+    const choreMap = {};  // Map: ChoreName -> { id, notes }
+    membersData.forEach(m => { memberMap[m.name] = { id: m.id, email: m.email }; });
+    choresData.forEach(c => { choreMap[c.choreName] = { id: c.id, notes: c.notes }; });
 
-  // Properly format the "Week Of" date — data[1][3] is often a Date object
-  // because Google Sheets auto-parses "2026-02-23" into a Date.
-  var rawWeekOf = data[1][3];
-  var weekOfStr = '';
-  if (rawWeekOf instanceof Date && !isNaN(rawWeekOf.getTime())) {
-    weekOfStr = Utilities.formatDate(rawWeekOf, Session.getScriptTimeZone(), "yyyy-MM-dd");
-  } else if (rawWeekOf) {
-    weekOfStr = String(rawWeekOf).trim();
-  }
-  if (!weekOfStr) {
-      SpreadsheetApp.getUi().alert(`Could not determine 'Week Of' date from '${CURRENT_CHORES_SHEET}' (expected in cell D2). Cannot log history accurately.`);
-      return;
-  }
+    // Properly format the "Week Of" date — data[1][3] is often a Date object
+    // because Google Sheets auto-parses "2026-02-23" into a Date.
+    var rawWeekOf = data[1][3];
+    var weekOfStr = '';
+    if (rawWeekOf instanceof Date && !isNaN(rawWeekOf.getTime())) {
+      weekOfStr = Utilities.formatDate(rawWeekOf, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    } else if (rawWeekOf) {
+      weekOfStr = String(rawWeekOf).trim();
+    }
+    if (!weekOfStr) {
+        SpreadsheetApp.getUi().alert(`Could not determine 'Week Of' date from '${CURRENT_CHORES_SHEET}' (expected in cell D2). Cannot log history accurately.`);
+        return;
+    }
 
-  const timestamp = new Date();
+    const timestamp = new Date();
 
-  for (let i = 1; i < data.length; i++) {
-    const memberName = String(data[i][0]).trim();
-    const choreOrStatus = String(data[i][1]).trim();
+    for (let i = 1; i < data.length; i++) {
+        const memberName = String(data[i][0]).trim();
+        const choreOrStatus = String(data[i][1]).trim();
 
-    const looksLikeStatus = [
-        "UNAVAILABLE", "AVAILABILITY NOT PROVIDED", "NO CHORE ASSIGNED", "STATUS:"
+        const looksLikeStatus = [
+            "UNAVAILABLE", "AVAILABILITY NOT PROVIDED", "NO CHORE ASSIGNED", "STATUS:"
         ].some(prefix => choreOrStatus.toUpperCase().includes(prefix));
 
-    if (memberName && choreOrStatus && !looksLikeStatus) {
-      const memberInfo = memberMap[memberName];
-      const choreInfo = choreMap[choreOrStatus];
+        if (memberName && choreOrStatus && !looksLikeStatus) {
+            const memberInfo = memberMap[memberName];
+            const choreInfo = choreMap[choreOrStatus];
 
-      if (memberInfo && choreInfo) {
-        historyToSave.push({
-          weekStartDate: weekOfStr,
-          memberId: memberInfo.id,
-          choreId: choreInfo.id,
-          memberName: memberName,
-          choreName: choreOrStatus,
-          timestamp: timestamp
-        });
+            if (memberInfo && choreInfo) {
+                historyToSave.push({
+                    weekStartDate: weekOfStr,
+                    memberId: memberInfo.id,
+                    choreId: choreInfo.id,
+                    memberName: memberName,
+                    choreName: choreOrStatus,
+                    timestamp: timestamp
+                });
 
-        assignmentsForNotification.push({
-          member: { name: memberName, email: memberInfo.email },
-          chore: { choreName: choreOrStatus, notes: choreInfo.notes }
-        });
-      } else {
-        if (!memberInfo) Logger.log(`Warning: Could not find Member ID for name "${memberName}" while preparing history/notifications.`);
-        if (!choreInfo) Logger.log(`Warning: Could not find Chore ID for name "${choreOrStatus}" while preparing history/notifications.`);
-      }
-    }
-  }
-
-  // --- Log to History Sheet ---
-  let historySavedCount = 0;
-  if (historyToSave.length > 0) {
-    historySavedCount = saveHistoryFromData(ss, historyToSave);
-  } else {
-    Logger.log("No actual assignments found in 'Current Assignments' to log to history.");
-  }
-
-  // --- Send Notifications ---
-  let notificationsSent = false;
-  if (assignmentsForNotification.length > 0) {
-    let weekDate;
-    try {
-      weekDate = new Date(weekOfStr + "T00:00:00");
-      if (isNaN(weekDate.getTime())) weekDate = getUpcomingMonday();
-    } catch (e) {
-      weekDate = getUpcomingMonday();
+                assignmentsForNotification.push({
+                    member: { name: memberName, email: memberInfo.email },
+                    chore: { choreName: choreOrStatus, notes: choreInfo.notes }
+                });
+            } else {
+                if (!memberInfo) Logger.log(`Warning: Could not find Member ID for name "${memberName}" while preparing history/notifications.`);
+                if (!choreInfo) Logger.log(`Warning: Could not find Chore ID for name "${choreOrStatus}" while preparing history/notifications.`);
+            }
+        }
     }
 
-    sendEmailNotification(assignmentsForNotification, weekDate);
-    sendDiscordNotification(assignmentsForNotification, weekDate);
-    notificationsSent = true;
-  } else {
-    Logger.log("No actual assignments found in 'Current Assignments' to send notifications for.");
-  }
 
-  // --- Final Alert ---
-  let alertMessage = "";
-  if (historySavedCount > 0) {
-    alertMessage += `${historySavedCount} assignments logged to '${HISTORY_SHEET}'.\n`;
-  } else {
-    alertMessage += "No assignments logged to history.\n";
-  }
-  if (notificationsSent) {
-    alertMessage += `Notifications sent for ${assignmentsForNotification.length} assignments!`;
-  } else {
-    alertMessage += "No notifications sent.";
-  }
-  SpreadsheetApp.getUi().alert(alertMessage);
+    // --- Log to History Sheet and Update Counts ---
+    let historySavedCount = 0;
+    if (historyToSave.length > 0) {
+        historySavedCount = saveHistoryFromData(ss, historyToSave);
+        normalizeChoreCounts(ss);
+    } else {
+        Logger.log("No actual assignments found in 'Current Assignments' to log to history.");
+    }
+
+    // --- Send Notifications ---
+    let notificationsSent = false;
+    if (assignmentsForNotification.length > 0) {
+        let weekDate;
+        try {
+            weekDate = new Date(weekOfStr + "T00:00:00");
+            if (isNaN(weekDate.getTime())) weekDate = getUpcomingMonday();
+        } catch (e) {
+            weekDate = getUpcomingMonday();
+        }
+
+        sendEmailNotification(assignmentsForNotification, weekDate);
+        sendDiscordNotification(assignmentsForNotification, weekDate);
+        notificationsSent = true;
+    } else {
+        Logger.log("No actual assignments found in 'Current Assignments' to send notifications for.");
+    }
+
+    // --- Final Alert ---
+    let alertMessage = "";
+    if (historySavedCount > 0) {
+        alertMessage += `${historySavedCount} assignments logged to '${HISTORY_SHEET}'.\n`;
+    } else {
+        alertMessage += "No assignments logged to history.\n";
+    }
+    if (notificationsSent) {
+        alertMessage += `Notifications sent for ${assignmentsForNotification.length} assignments!`;
+    } else {
+        alertMessage += "No notifications sent.";
+    }
+    SpreadsheetApp.getUi().alert(alertMessage);
 }
 
+/**
+ * Increment Counts sheet by +1 for each {memberId, choreId} in historyRows.
+ * (Does NOT normalize; call normalizeChoreCounts(ss) after.)
+ */
+function incrementCountsFromHistoryRows(ss, historyRows) {
+    const sh = ss.getSheetByName(CHORE_COUNT);
+    if (!sh) throw new Error(`Missing sheet: ${CHORE_COUNT}`);
+
+    const range = sh.getDataRange();
+    const data = range.getValues(); // row 1 headers, col A = NetID
+
+    if (data.length < 2 || data[0].length < 2) return;
+
+    const headers = data[0].map(x => String(x).trim());
+    const choreIdToCol = {};
+    for (let c = 1; c < headers.length; c++) choreIdToCol[headers[c]] = c;
+
+    const netIdToRow = {};
+    for (let r = 1; r < data.length; r++) {
+        const netId = String(data[r][0]).trim();
+        if (netId) netIdToRow[netId] = r;
+    }
+
+    historyRows.forEach(h => {
+        const netId = String(h.memberId).trim();
+        const choreId = String(h.choreId).trim();
+
+        const r = netIdToRow[netId];
+        const c = choreIdToCol[choreId];
+        if (r == null || c == null) return;
+
+        data[r][c] = (Number(data[r][c]) || 0) + 1;
+    });
+
+    range.setValues(data);
+}
 
 // ---- DATA FETCHING HELPERS ----
 /**
  * Fetches chore details. Returns ID, Name, Importance, Notes.
+ * Importance should be numeric (1, 2, 3).
  */
 function getChores(ss) {
-  const sheet = ss.getSheetByName(CHORES_SHEET);
-  if (!sheet) { Logger.log(`Error: Sheet "${CHORES_SHEET}" not found.`); return []; }
-  const data = sheet.getDataRange().getValues();
-  return data.slice(1).map(row => ({
-    id: String(row[0]).trim(),
-    choreName: String(row[1]).trim(),
-    importance: String(row[2]).trim().toLowerCase(),
-    notes: row[3] || ""
-  })).filter(c => c.id && c.choreName);
+    const sheet = ss.getSheetByName(CHORES_SHEET);
+    if (!sheet) { Logger.log(`Error: Sheet "${CHORES_SHEET}" not found.`); return []; }
+    const data = sheet.getDataRange().getValues();
+    return data.slice(1).map(row => ({
+        id: String(row[0]).trim(),
+        choreName: String(row[1]).trim(),
+        importance: String(row[2]).trim().toLowerCase(),
+        notes: row[3] || ""
+    })).filter(c => c.id && c.choreName);
 }
 
 /**
- * Fetches active/visitor member details. Returns ID, Name, Email, Status, Notes.
+ * Fetches active/visitor member details. Returns NetID, Name, Email, Status, Notes.
  */
 function getActiveMembers(ss) {
-  const sheet = ss.getSheetByName(MEMBERS_SHEET);
-  if (!sheet) { Logger.log(`Error: Sheet "${MEMBERS_SHEET}" not found.`); return []; }
-  const data = sheet.getDataRange().getValues();
-  return data.slice(1).map(row => ({
-    id: String(row[0]).trim(),
-    name: String(row[1]).trim(),
-    email: String(row[2]).trim(),
-    status: String(row[3]).trim(),
-    notes: row[4] || ""
-  })).filter(m => m.id && m.name && m.email && (m.status === "Active" || m.status === "Visitor"));
+    const sheet = ss.getSheetByName(MEMBERS_SHEET);
+    if (!sheet) { Logger.log(`Error: Sheet "${MEMBERS_SHEET}" not found.`); return []; }
+    const data = sheet.getDataRange().getValues();
+
+    return data.slice(1).map(row => ({
+        id: String(row[0]).trim(),      // NetID (the stable key)
+        name: String(row[1]).trim(),
+        email: String(row[2]).trim(),
+        status: String(row[3]).trim(),
+        notes: row[4] || ""
+    })).filter(m => m.id && m.name && m.email);
 }
 
-/**
- * Fetches availability data for a specific week start date string (yyyy-MM-dd).
- */
-function getAvailability(ss, weekStartDateStr) {
-  const sheet = ss.getSheetByName(AVAIL_SHEET);
-  if (!sheet) { Logger.log(`Error: Sheet "${AVAIL_SHEET}" not found.`); return []; }
-  const data = sheet.getDataRange().getValues();
-  const results = [];
-  data.slice(1).forEach(row => {
-    let sheetDateStr = "";
-    const dateValue = row[0];
-    const memberId = String(row[1]).trim();
-    const availableStatus = String(row[2]).trim();
-    const notes = row[3] || "";
-    if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
-        sheetDateStr = Utilities.formatDate(dateValue, Session.getScriptTimeZone(), "yyyy-MM-dd");
-    } else if (typeof dateValue === 'string' || typeof dateValue === 'number') {
-        try {
-            let parsedDate = new Date(dateValue);
-            if (!isNaN(parsedDate.getTime())) {
-                sheetDateStr = Utilities.formatDate(parsedDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
-            }
-        } catch (e) { Logger.log(`Could not parse date value: ${dateValue} in ${AVAIL_SHEET}`); }
-    }
-    if (sheetDateStr === weekStartDateStr && memberId) {
-      results.push({
-        weekStartDate: sheetDateStr,
-        memberId: memberId,
-        available: availableStatus,
-        notes: notes
-      });
-    }
-  });
-  return results;
-}
 
 /**
  * Fetches chore assignment history.
@@ -403,140 +498,209 @@ function getAvailability(ss, weekStartDateStr) {
  * If weeksBack is 0 or null, fetches ALL history.
  */
 function getHistory(ss, weeksBack) {
-  const sheet = ss.getSheetByName(HISTORY_SHEET);
-  if (!sheet) { Logger.log(`Error: Sheet "${HISTORY_SHEET}" not found.`); return []; }
-  const data = sheet.getDataRange().getValues();
+    const sheet = ss.getSheetByName(HISTORY_SHEET);
+    if (!sheet) { Logger.log(`Error: Sheet "${HISTORY_SHEET}" not found.`); return []; }
+    const data = sheet.getDataRange().getValues();
   const now = new Date();
-  const cutoff = (weeksBack > 0) 
-    ? new Date(now.getTime() - (weeksBack * 7 * 24 * 60 * 60 * 1000)) 
-    : null;
+    const cutoff = (weeksBack > 0)
+        ? new Date(now.getTime() - (weeksBack * 7 * 24 * 60 * 60 * 1000))
+        : null;
 
-  return data.slice(1).map(row => {
-    let entryDate = null;
-    const dateValue = row[0];
-    const memberId = String(row[1]).trim();
-    const choreId = String(row[2]).trim();
-     if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
-         entryDate = dateValue;
-    } else if (typeof dateValue === 'string' || typeof dateValue === 'number') {
-        try {
-            let d = new Date(dateValue);
-            if (!isNaN(d.getTime())) entryDate = d;
-        } catch (e) { Logger.log(`Could not parse date value: ${dateValue} in ${HISTORY_SHEET}`); }
-    }
-    return { date: entryDate, memberId: memberId, choreId: choreId };
-  })
-  .filter(h => h.date && h.memberId && h.choreId && (!cutoff || h.date >= cutoff)); 
+    return data.slice(1).map(row => {
+        let entryDate = null;
+        const dateValue = row[0];
+        const memberId = String(row[1]).trim();
+        const choreId = String(row[2]).trim();
+        if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+            entryDate = dateValue;
+        } else if (typeof dateValue === 'string' || typeof dateValue === 'number') {
+            try {
+                let d = new Date(dateValue);
+                if (!isNaN(d.getTime())) entryDate = d;
+            } catch (e) { Logger.log(`Could not parse date value: ${dateValue} in ${HISTORY_SHEET}`); }
+        }
+        return { date: entryDate, memberId: memberId, choreId: choreId };
+    })
+        .filter(h => h.date && h.memberId && h.choreId && (!cutoff || h.date >= cutoff));
 }
 
+/**
+ * Normalizes the counts of each chore on the Counts sheet:
+ * For each chore column, subtract the minimum value so the lowest becomes 0.
+ * This ensures anyone joining gets a count of 0 and scores typically stay in 0, +1, +2.
+ */
+function normalizeChoreCounts(ss) {
+    ss = ss || SpreadsheetApp.getActiveSpreadsheet();
+    const sh = ss.getSheetByName(CHORE_COUNT);
+    if (!sh) throw new Error(`Missing sheet: "${CHORE_COUNT}"`);
+
+    const range = sh.getDataRange();
+    const data = range.getValues(); // row 1 = headers, col A = NetID
+
+    const numRows = data.length;
+    const numCols = data[0].length;
+
+    for (let c = 1; c < numCols; c++) {
+        let minVal = Infinity;
+
+        for (let r = 1; r < numRows; r++) {
+            const v = Number(data[r][c]);
+            if (!isNaN(v)) minVal = Math.min(minVal, v);
+        }
+        if (!isFinite(minVal) || minVal === 0) continue;
+
+        for (let r = 1; r < numRows; r++) {
+            const v = Number(data[r][c]);
+            data[r][c] = isNaN(v) ? data[r][c] : v - minVal;
+        }
+    }
+    range.setValues(data);
+}
+
+
+/**
+ * Returns object mapping each NetID in `people` to their normalized count
+ * for the given `choreId` from the Counts sheet.
+ */
+function getNormalizedCounts(ss, choreId, people) {
+    const sh = ss.getSheetByName(CHORE_COUNT);
+    if (!sh) throw new Error(`Missing sheet: "${CHORE_COUNT}"`);
+
+    const data = sh.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+
+    const choreCol = headers.indexOf(String(choreId));
+    if (choreCol === -1) return {};
+
+    const result = {};
+
+    for (let i = 1; i < data.length; i++) {
+        const netId = String(data[i][0]).trim();
+        if (!people.includes(netId)) continue;
+
+        result[netId] = Number(data[i][choreCol]) || 0;
+    }
+    return result;
+}
 
 // ---- ACTION HELPERS ----
 /**
  * Saves the prepared history data to the HISTORY_SHEET.
  */
 function saveHistoryFromData(ss, historyToSave) {
-  const sheet = ss.getSheetByName(HISTORY_SHEET);
-  if (!sheet) {
-    Logger.log(`Error: Sheet "${HISTORY_SHEET}" not found. Assignments not saved to history.`);
-    return 0;
-  }
-  let savedCount = 0;
-  historyToSave.forEach(h => {
-    sheet.appendRow([
-        h.weekStartDate,
-        h.memberId,
-        h.choreId,
-        h.memberName,
-        h.choreName,
-        h.timestamp
-    ]);
-    savedCount++;
-  });
-   Logger.log(`Saved ${savedCount} assignments to ${HISTORY_SHEET}.`);
-   return savedCount;
+    const sheet = ss.getSheetByName(HISTORY_SHEET);
+    if (!sheet) {
+        Logger.log(`Error: Sheet "${HISTORY_SHEET}" not found. Assignments not saved to history.`);
+        return 0;
+    }
+    let savedCount = 0;
+    historyToSave.forEach(h => {
+        sheet.appendRow([
+            h.weekStartDate,
+            h.memberId,
+            h.choreId,
+            h.memberName,
+            h.choreName,
+            h.timestamp
+        ]);
+        savedCount++;
+    });
+    Logger.log(`Saved ${savedCount} assignments to ${HISTORY_SHEET}.`);
+    return savedCount;
 }
 
 /**
  * Clears and updates the CURRENT_CHORES_SHEET with data for ALL active members.
+ * Includes Chore Count column (Robyn's addition).
  */
 function updateCurrentAssignmentsSheet(ss, outputRows, weekStartDateStr) {
-  let sheet = ss.getSheetByName(CURRENT_CHORES_SHEET);
-  if (!sheet) {
-    sheet = ss.insertSheet(CURRENT_CHORES_SHEET);
-    Logger.log(`Sheet "${CURRENT_CHORES_SHEET}" created.`);
-  }
-  sheet.clearContents().clearFormats();
-  const headers = ["Member", "Chore / Status Note", "Chore Notes", "Week Of"];
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight("bold");
-  sheet.setFrozenRows(1);
-  const data = outputRows.map(row => [
-    row.memberName,
-    row.choreOrStatus,
-    row.choreNotes,
-    weekStartDateStr
-  ]);
-  if (data.length > 0) {
-    sheet.getRange(2, 1, data.length, data[0].length).setValues(data);
-    sheet.autoResizeColumns(1, headers.length);
-  } else {
-    sheet.getRange(2, 1).setValue("No member data processed for this week.");
-  }
-   Logger.log(`Updated ${CURRENT_CHORES_SHEET} with ${outputRows.length} member entries.`);
+    let sheet = ss.getSheetByName(CURRENT_CHORES_SHEET);
+    if (!sheet) sheet = ss.insertSheet(CURRENT_CHORES_SHEET);
+
+    sheet.clearContents().clearFormats();
+
+    const headers = [
+        "Member",
+        "Chore / Status Note",
+        "Chore Notes",
+        "Week Of",
+        "Chore Count"
+    ];
+
+    sheet.getRange(1, 1, 1, headers.length)
+        .setValues([headers])
+        .setFontWeight("bold");
+
+    sheet.setFrozenRows(1);
+
+    const data = outputRows.map(row => [
+        row.memberName,
+        row.choreOrStatus,
+        row.choreNotes,
+        weekStartDateStr,
+        row.choreCount
+    ]);
+
+    if (data.length > 0) {
+        sheet.getRange(2, 1, data.length, data[0].length).setValues(data);
+        sheet.getRange(2, 5, data.length, 1).setNumberFormat("0");
+        sheet.autoResizeColumns(1, headers.length);
+    }
 }
 
 
 // ---- EMAIL NOTIFICATION ----
 /**
  * Composes and sends email notifications for assigned chores.
- * Now includes the chore submission website link.
+ * Includes the chore submission website link.
  */
 function sendEmailNotification(assignmentsToNotify, upcomingMondayDate) {
-  const activeUserEmail = Session.getActiveUser().getEmail();
-  const memberEmails = [...new Set(assignmentsToNotify.map(a => a.member.email).filter(email => email && email.includes('@') && email !== activeUserEmail))];
+    const activeUserEmail = Session.getActiveUser().getEmail();
+    const memberEmails = [...new Set(assignmentsToNotify.map(a => a.member.email).filter(email => email && email.includes('@') && email !== activeUserEmail))];
 
-  if (!activeUserEmail && memberEmails.length === 0) {
-      Logger.log("No valid recipient emails found for assigned chores. Email notification not sent.");
-      return;
-  }
+    if (!activeUserEmail && memberEmails.length === 0) {
+        Logger.log("No valid recipient emails found for assigned chores. Email notification not sent.");
+        return;
+    }
 
-  // Determine due dates and phrasing
+    // Determine due dates and phrasing
   const today = new Date();
-  const dayOfWeek = today.getDay();
-  const upcomingSunday = new Date(upcomingMondayDate.getTime() - (1 * 24 * 60 * 60 * 1000));
-  let dueDateText, checkTimeText, extensionDeadlineText, subjectDueDateStr;
-  if (dayOfWeek === 5) {
-    dueDateText = `this <strong>Sunday night (${formatDateWithOrdinal(upcomingSunday)})</strong>`;
-    checkTimeText = "I'll check for completion first thing <strong>Monday morning</strong>.";
-    extensionDeadlineText = "Need more time? <strong>Request an extension</strong> on the submission website by <strong>Saturday noon</strong>";
-    subjectDueDateStr = `Sun, ${formatDateWithOrdinal(upcomingSunday)}`;
-  } else {
-    dueDateText = `this <strong>Monday noon (${formatDateWithOrdinal(upcomingMondayDate)})</strong>`;
-    checkTimeText = "I will check for completion <strong>Monday afternoon</strong>.";
-    extensionDeadlineText = "Need more time? <strong>Request an extension</strong> on the submission website, latest by <strong>Sunday noon</strong>.";
-    subjectDueDateStr = `Mon, ${formatDateWithOrdinal(upcomingMondayDate)}`;
-  }
+    const dayOfWeek = today.getDay();
+    const upcomingSunday = new Date(upcomingMondayDate.getTime() - (1 * 24 * 60 * 60 * 1000));
+    let dueDateText, checkTimeText, extensionDeadlineText, subjectDueDateStr;
+    if (dayOfWeek === 5) {
+        dueDateText = `this <strong>Sunday night (${formatDateWithOrdinal(upcomingSunday)})</strong>`;
+        checkTimeText = "I'll check for completion first thing <strong>Monday morning</strong>.";
+        extensionDeadlineText = "Need more time? <strong>Request an extension</strong> on the submission website by <strong>Saturday noon</strong>";
+        subjectDueDateStr = `Sun, ${formatDateWithOrdinal(upcomingSunday)}`;
+    } else {
+        dueDateText = `this <strong>Monday noon (${formatDateWithOrdinal(upcomingMondayDate)})</strong>`;
+        checkTimeText = "I will check for completion <strong>Monday afternoon</strong>.";
+        extensionDeadlineText = "Need more time? <strong>Request an extension</strong> on the submission website, latest by <strong>Sunday noon</strong>.";
+        subjectDueDateStr = `Mon, ${formatDateWithOrdinal(upcomingMondayDate)}`;
+    }
 
-  // Randomize messages
-  const greetings = ["Hi everyone,", "Hey all,", "Hello housemates,", "Greetings everyone,", "Hi all,", "Hello all,"];
-  const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-  const welcomeMessages = [
-    "Hope you had a great week! Let's get ready for the next!",
-    "Happy Weekend! Here are the upcoming chores to keep our space tidy.",
-    "Hope you're relaxing! Just sending out the chore list for the week ahead.",
-    "It's time for the weekly chore rundown. Thanks for pitching in!",
-    "Wishing everyone a smooth start to the new week! Here are your chores:"
-  ];
-  const randomWelcome = welcomeMessages[Math.floor(Math.random() * welcomeMessages.length)];
-  const infoParagraphs = [
-    `Here are this week's chore assignments below! Please aim to finish them by ${dueDateText}. ${checkTimeText} ${extensionDeadlineText} if you need a bit more time. Thanks!`,
-    `Check out the chore list for the upcoming week. The deadline is ${dueDateText}. ${extensionDeadlineText}. ${checkTimeText}`,
-    `Your mission, should you choose to accept it, is below. Chores are due ${dueDateText}. ${checkTimeText} ${extensionDeadlineText}.`,
-    `Rolling out the chore assignments! Please have them wrapped up by ${dueDateText}. ${extensionDeadlineText}. ${checkTimeText} Appreciate everyone's help!`
-  ];
-  let randomInfo = infoParagraphs[Math.floor(Math.random() * infoParagraphs.length)];
+    // Randomize messages
+    const greetings = ["Hi everyone,", "Hey all,", "Hello housemates,", "Greetings everyone,", "Hi all,", "Hello all,"];
+    const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+    const welcomeMessages = [
+        "Hope you had a great week! Let's get ready for the next!",
+        "Happy Weekend! Here are the upcoming chores to keep our space tidy.",
+        "Hope you're relaxing! Just sending out the chore list for the week ahead.",
+        "It's time for the weekly chore rundown. Thanks for pitching in!",
+        "Wishing everyone a smooth start to the new week! Here are your chores:"
+    ];
+    const randomWelcome = welcomeMessages[Math.floor(Math.random() * welcomeMessages.length)];
+    const infoParagraphs = [
+        `Here are this week's chore assignments below! Please aim to finish them by ${dueDateText}. ${checkTimeText} ${extensionDeadlineText} if you need a bit more time. Thanks!`,
+        `Check out the chore list for the upcoming week. The deadline is ${dueDateText}. ${extensionDeadlineText}. ${checkTimeText}`,
+        `Your mission, should you choose to accept it, is below. Chores are due ${dueDateText}. ${checkTimeText} ${extensionDeadlineText}.`,
+        `Rolling out the chore assignments! Please have them wrapped up by ${dueDateText}. ${extensionDeadlineText}. ${checkTimeText} Appreciate everyone's help!`
+    ];
+    let randomInfo = infoParagraphs[Math.floor(Math.random() * infoParagraphs.length)];
 
-  // Construct HTML Body
-  let finalChoreInfo = `
+    // Construct HTML Body
+    let finalChoreInfo = `
     <p>${randomGreeting}</p>
     <p>${randomWelcome}</p>
     <p>${randomInfo}</p>
@@ -550,158 +714,132 @@ function sendEmailNotification(assignmentsToNotify, upcomingMondayDate) {
     <p>Let me know if you have any questions! 😊</p>
     <hr>
   `;
-  let htmlBody = `<html lang="en"><body style="font-family: sans-serif;">${finalChoreInfo}`;
-  htmlBody += `<h2>${HOUSE_NAME} Chore Assignments (Due: ${subjectDueDateStr})</h2>`;
-  htmlBody += `<table border="1" cellpadding="7" cellspacing="0" style="border-collapse: collapse; border: 1px solid #ccc;">
+    let htmlBody = `<html lang="en"><body style="font-family: sans-serif;">${finalChoreInfo}`;
+    htmlBody += `<h2>${HOUSE_NAME} Chore Assignments (Due: ${subjectDueDateStr})</h2>`;
+    htmlBody += `<table border="1" cellpadding="7" cellspacing="0" style="border-collapse: collapse; border: 1px solid #ccc;">
                  <thead style="background-color: #f2f2f2;"><tr><th>Member</th><th>Chore</th></tr></thead>
                  <tbody>`;
-  assignmentsToNotify.forEach(a => {
-    htmlBody += `<tr><td style="padding-right: 15px;">${a.member.name}</td><td>${a.chore.choreName}${a.chore.notes ? ` <i>(${a.chore.notes})</i>` : ''}</td></tr>`;
-  });
-  htmlBody += `</tbody></table><br>Thanks everyone!</body></html>`;
+    assignmentsToNotify.forEach(a => {
+        htmlBody += `<tr><td style="padding-right: 15px;">${a.member.name}</td><td>${a.chore.choreName}${a.chore.notes ? ` <i>(${a.chore.notes})</i>` : ''}</td></tr>`;
+    });
+    htmlBody += `</tbody></table><br>Thanks everyone!</body></html>`;
 
-  const subject = `${HOUSE_NAME} Chore Assignments (Due: ${subjectDueDateStr})`;
+    const subject = `${HOUSE_NAME} Chore Assignments (Due: ${subjectDueDateStr})`;
 
   // Send email
-  try {
-      const emailOptions = {
-          subject: subject,
-          htmlBody: htmlBody
-      };
-      if (activeUserEmail && activeUserEmail.includes('@')) {
-          emailOptions.to = activeUserEmail;
-      }
-      if (memberEmails.length > 0) {
-          emailOptions.bcc = memberEmails.join(",");
-      }
-      if (emailOptions.to || emailOptions.bcc) {
-        MailApp.sendEmail(emailOptions);
-        Logger.log(`Email notification sent (To: ${emailOptions.to || 'None'}, BCC: ${memberEmails.length} members).`);
-      } else {
-         Logger.log("No valid TO or BCC recipients. Email not sent.");
-      }
-  } catch (e) {
-      Logger.log("Error sending email notification: " + e);
-  }
+    try {
+        const emailOptions = {
+            subject: subject,
+            htmlBody: htmlBody
+        };
+        if (activeUserEmail && activeUserEmail.includes('@')) {
+            emailOptions.to = activeUserEmail;
+        }
+        if (memberEmails.length > 0) {
+            emailOptions.bcc = memberEmails.join(",");
+        }
+        if (emailOptions.to || emailOptions.bcc) {
+          MailApp.sendEmail(emailOptions);
+          Logger.log(`Email notification sent (To: ${emailOptions.to || 'None'}, BCC: ${memberEmails.length} members).`);
+        } else {
+           Logger.log("No valid TO or BCC recipients. Email not sent.");
+        }
+    } catch (e) {
+        Logger.log("Error sending email notification: " + e);
+    }
 }
 
 
 // ---- DISCORD NOTIFICATION ----
 /**
  * Sends Discord notification for assigned chores.
- * Now includes the chore submission website link.
+ * Includes the chore submission website link.
  */
 function sendDiscordNotification(assignmentsToNotify, upcomingMondayDate) {
-   const webhookUrl = DISCORD_WEBHOOK_URL;
-   if (!webhookUrl || webhookUrl === "YOUR_DISCORD_WEBHOOK_URL_HERE") {
-       Logger.log("Discord Webhook URL is not configured. Skipping Discord notification.");
-       return;
-   }
+    const webhookUrl = DISCORD_WEBHOOK_URL;
+    if (!webhookUrl || webhookUrl === "YOUR_DISCORD_WEBHOOK_URL_HERE") {
+        Logger.log("Discord Webhook URL is not configured. Skipping Discord notification.");
+        return;
+    }
 
-  // Determine due dates and phrasing
-  const today = new Date();
-  const dayOfWeek = today.getDay();
-  const upcomingSunday = new Date(upcomingMondayDate.getTime() - (1 * 24 * 60 * 60 * 1000));
-  let dueDateTextDiscord, checkTimeTextDiscord, extensionDeadlineTextDiscord, subjectDueDateStrDiscord;
-   if (dayOfWeek === 5) {
-    dueDateTextDiscord = `due this **Sunday night (${formatDateWithOrdinal(upcomingSunday)})**`;
-    checkTimeTextDiscord = "Completion check: **Monday morning**.";
-    extensionDeadlineTextDiscord = "Need more time? Request an extension on the website by **Saturday noon**.";
-    subjectDueDateStrDiscord = `Sun, ${formatDateWithOrdinal(upcomingSunday)}`;
-  } else {
-    dueDateTextDiscord = `due this **Monday noon (${formatDateWithOrdinal(upcomingMondayDate)})**`;
-    checkTimeTextDiscord = "Completion check will be done by my underling* @house-manager*: **Monday afternoon**.";
-    extensionDeadlineTextDiscord = "Need more time? Request an extension on the website by **Sunday noon**.";
-    subjectDueDateStrDiscord = `Mon, ${formatDateWithOrdinal(upcomingMondayDate)}`;
-  }
+    // Determine due dates and phrasing
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const upcomingSunday = new Date(upcomingMondayDate.getTime() - (1 * 24 * 60 * 60 * 1000));
+    let dueDateTextDiscord, checkTimeTextDiscord, extensionDeadlineTextDiscord, subjectDueDateStrDiscord;
+    if (dayOfWeek === 5) {
+        dueDateTextDiscord = `due this **Sunday night (${formatDateWithOrdinal(upcomingSunday)})**`;
+        checkTimeTextDiscord = "Completion check: **Monday morning**.";
+        extensionDeadlineTextDiscord = "Need more time? Request an extension on the website by **Saturday noon**.";
+        subjectDueDateStrDiscord = `Sun, ${formatDateWithOrdinal(upcomingSunday)}`;
+    } else {
+        dueDateTextDiscord = `due this **Monday noon (${formatDateWithOrdinal(upcomingMondayDate)})**`;
+        checkTimeTextDiscord = "Completion check will be done by my underling* @house-manager*: **Monday afternoon**.";
+        extensionDeadlineTextDiscord = "Need more time? Request an extension on the website by **Sunday noon**.";
+        subjectDueDateStrDiscord = `Mon, ${formatDateWithOrdinal(upcomingMondayDate)}`;
+    }
 
-  // Construct Discord message
-  let message = `I, the mighty Gorge Monster, have been called forth once again. Those who abide by my rule shall receive my blessings, but those who defy me will feel the full force of my wrath. Here are my commands for this week \n **${HOUSE_NAME} Chore Assignments (Due: ${subjectDueDateStrDiscord})** \n@everyone\n------------------------------------\n`;
-  assignmentsToNotify.forEach(a => {
-    message += `**${a.member.name}**: ${a.chore.choreName}${a.chore.notes ? ` (${a.chore.notes})` : ''}\n`;
-  });
-  message += `\n*Reminder: Chores ${dueDateTextDiscord}. \n${checkTimeTextDiscord} \n${extensionDeadlineTextDiscord} \nChecklists by freezer & in the `;
-  message += `[Google Doc](${CHECKLIST_LINK}).*\n\n`;
-  message += `📱 **Submit your completed chore & request extensions here:** ${CHORE_SUBMIT_URL}`;
+    // Construct Discord message
+    let message = `I, the mighty Gorge Monster, have been called forth once again, this time with a new algorithm. Those who abide by my rule shall receive my blessings, but those who defy me will feel the full force of my wrath. Here are my commands for this week \n **${HOUSE_NAME} Chore Assignments (Due: ${subjectDueDateStrDiscord})** \n@everyone\n------------------------------------\n`;
+    assignmentsToNotify.forEach(a => {
+        message += `**${a.member.name}**: ${a.chore.choreName}${a.chore.notes ? ` (${a.chore.notes})` : ''}\n`;
+    });
+    message += `\n*Reminder: Chores ${dueDateTextDiscord}. \n${checkTimeTextDiscord} \n${extensionDeadlineTextDiscord} \nChecklists by freezer & in the `;
+    message += `[Google Doc](${CHECKLIST_LINK}).*\n\n`;
+    message += `📱 **Submit your completed chore & request extensions here:** ${CHORE_SUBMIT_URL}`;
 
   // Prepare payload and options
-   const payload = JSON.stringify({ content: message });
-   const options = {
+    const payload = JSON.stringify({ content: message });
+    const options = {
         method: "post",
         contentType: "application/json",
         payload: payload,
         muteHttpExceptions: true
-   };
+    };
 
    // Send to Discord
-   try {
-    const response = UrlFetchApp.fetch(webhookUrl, options);
-    if (response.getResponseCode() >= 200 && response.getResponseCode() < 300) {
-        Logger.log("Discord notification sent successfully for assigned chores.");
-    } else {
-        Logger.log(`Discord webhook failed with response code ${response.getResponseCode()}: ${response.getContentText()}`);
+    try {
+        const response = UrlFetchApp.fetch(webhookUrl, options);
+        if (response.getResponseCode() >= 200 && response.getResponseCode() < 300) {
+            Logger.log("Discord notification sent successfully for assigned chores.");
+        } else {
+            Logger.log(`Discord webhook failed with response code ${response.getResponseCode()}: ${response.getContentText()}`);
+        }
+    } catch (e) {
+        Logger.log("Error sending Discord notification: " + e);
     }
-  } catch (e) {
-    Logger.log("Error sending Discord notification: " + e);
-  }
 }
 
 
 // ---- DATE & UTILITY HELPERS ----
 
 /**
- * Finds the best member to assign a chore to from a list of eligible members.
- */
-function findBestMemberForChore(eligibleMembers, chore, choreCounts) {
-  if (eligibleMembers.length === 1) {
-    return eligibleMembers[0];
-  }
-
-  const scoredMembers = eligibleMembers.map(member => {
-    let count = 0;
-    if (choreCounts[member.id] && choreCounts[member.id][chore.id]) {
-      count = choreCounts[member.id][chore.id];
-    }
-    return { member: member, count: count };
-  });
-
-  scoredMembers.sort((a, b) => a.count - b.count);
-  const lowestCount = scoredMembers[0].count;
-  const bestMembers = scoredMembers
-    .filter(m => m.count === lowestCount)
-    .map(m => m.member);
-  const chosenMember = bestMembers[Math.floor(Math.random() * bestMembers.length)];
-  return chosenMember;
-}
-
-
-/**
  * Calculates the date of the upcoming Monday (start of the week).
  */
 function getUpcomingMonday() {
   const today = new Date();
-  const dayOfWeek = today.getDay();
-  const daysToAdd = (dayOfWeek === 0) ? 1 : (8 - dayOfWeek);
-  const upcomingMonday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysToAdd);
-  upcomingMonday.setHours(0, 0, 0, 0);
-  return upcomingMonday;
+    const dayOfWeek = today.getDay();
+    const daysToAdd = (dayOfWeek === 0) ? 1 : (8 - dayOfWeek);
+    const upcomingMonday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysToAdd);
+    upcomingMonday.setHours(0, 0, 0, 0);
+    return upcomingMonday;
 }
 
 /**
  * Formats a Date object into a string like "Apr 19th".
  */
 function formatDateWithOrdinal(date) {
-  if (!(date instanceof Date) || isNaN(date.getTime())) {
-      Logger.log("Invalid date passed to formatDateWithOrdinal");
-      return "Invalid Date";
-  }
-  const day = date.getDate();
-  let suffix;
-  if (day % 10 === 1 && day !== 11) suffix = 'st';
-  else if (day % 10 === 2 && day !== 12) suffix = 'nd';
-  else if (day % 10 === 3 && day !== 13) suffix = 'rd';
-  else suffix = 'th';
-  return Utilities.formatDate(date, Session.getScriptTimeZone(), `MMM d'${suffix}'`);
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+        Logger.log("Invalid date passed to formatDateWithOrdinal");
+        return "Invalid Date";
+    }
+    const day = date.getDate();
+    let suffix;
+    if (day % 10 === 1 && day !== 11) suffix = 'st';
+    else if (day % 10 === 2 && day !== 12) suffix = 'nd';
+    else if (day % 10 === 3 && day !== 13) suffix = 'rd';
+    else suffix = 'th';
+    return Utilities.formatDate(date, Session.getScriptTimeZone(), `MMM d'${suffix}'`);
 }
 
 
@@ -711,33 +849,33 @@ function formatDateWithOrdinal(date) {
  * every Sunday morning around 9 AM.
  */
 function createWeeklyTrigger() {
-  const functionName = 'assignChores';
-  const triggers = ScriptApp.getProjectTriggers();
-  let triggerDeleted = false;
+    const functionName = 'assignChores';
+    const triggers = ScriptApp.getProjectTriggers();
+    let triggerDeleted = false;
 
-  triggers.forEach(trigger => {
-    if (trigger.getHandlerFunction() === functionName) {
-      ScriptApp.deleteTrigger(trigger);
-      triggerDeleted = true;
-      Logger.log(`Deleted existing trigger for ${functionName}.`);
+    triggers.forEach(trigger => {
+        if (trigger.getHandlerFunction() === functionName) {
+            ScriptApp.deleteTrigger(trigger);
+            triggerDeleted = true;
+            Logger.log(`Deleted existing trigger for ${functionName}.`);
+        }
+    });
+
+    try {
+        ScriptApp.newTrigger(functionName)
+            .timeBased()
+            .onWeekDay(ScriptApp.WeekDay.SUNDAY)
+            .atHour(9)
+            .inTimezone(Session.getScriptTimeZone())
+            .create();
+
+        const message = triggerDeleted
+            ? `Existing trigger for '${functionName}' deleted. New weekly trigger created successfully to run every Sunday around 9 AM.`
+            : `New weekly trigger created successfully for '${functionName}' to run every Sunday around 9 AM.`;
+        SpreadsheetApp.getUi().alert(message);
+        Logger.log(`Created new weekly trigger for ${functionName}.`);
+    } catch (e) {
+        Logger.log("Error creating weekly trigger: " + e);
+        SpreadsheetApp.getUi().alert("Error creating weekly trigger. Make sure you have permissions. Check Logs.");
     }
-  });
-
-  try {
-    ScriptApp.newTrigger(functionName)
-      .timeBased()
-      .onWeekDay(ScriptApp.WeekDay.SUNDAY)
-      .atHour(9)
-      .inTimezone(Session.getScriptTimeZone())
-      .create();
-
-    const message = triggerDeleted
-      ? `Existing trigger for '${functionName}' deleted. New weekly trigger created successfully to run every Sunday around 9 AM.`
-      : `New weekly trigger created successfully for '${functionName}' to run every Sunday around 9 AM.`;
-    SpreadsheetApp.getUi().alert(message);
-    Logger.log(`Created new weekly trigger for ${functionName}.`);
-  } catch (e) {
-      Logger.log("Error creating weekly trigger: " + e);
-      SpreadsheetApp.getUi().alert("Error creating weekly trigger. Make sure you have permissions. Check Logs.");
-  }
 }
