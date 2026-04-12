@@ -22,6 +22,7 @@ function onOpen() {
     .createMenu('Chore Tools')
     .addItem('1. Assign Chores', 'assignChores')
     .addItem('2. Send Notifications & Log History', 'sendNotificationsAndLogHistory')
+    .addItem('3. Recalculate Counts from History', 'recalculateCountsFromHistory')
     .addSeparator()
     .addItem('Create/Update Weekly Trigger', 'createWeeklyTrigger')
     .addSeparator()
@@ -455,6 +456,40 @@ function incrementCountsFromHistoryRows(ss, historyRows) {
     });
 
     range.setValues(data);
+}
+
+/**
+ * Utility function to periodically ensure the Counts sheet is perfectly in sync with the History sheet.
+ * Clears all counts, re-sums them from the entire History, and re-normalizes.
+ */
+function recalculateCountsFromHistory() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // 1. Wipe all current counts to 0
+    const sh = ss.getSheetByName(CHORE_COUNT);
+    if (!sh) throw new Error(`Missing sheet: ${CHORE_COUNT}`);
+    
+    const range = sh.getDataRange();
+    const data = range.getValues();
+    
+    if (data.length < 2 || data[0].length < 2) return;
+    
+    // Clear all numerical cells (rows > 0, cols > 0)
+    for (let r = 1; r < data.length; r++) {
+        for (let c = 1; c < data[0].length; c++) {
+            data[r][c] = 0;
+        }
+    }
+    range.setValues(data);
+    
+    // 2. Fetch entire history and replay it
+    const allHistory = getHistory(ss, 0); // 0 means all history
+    incrementCountsFromHistoryRows(ss, allHistory);
+    
+    // 3. Re-normalize the newly summed counts
+    normalizeChoreCounts(ss);
+    
+    SpreadsheetApp.getUi().alert("Counts have been fully recalculated and normalized from the History sheet.");
 }
 
 // ---- DATA FETCHING HELPERS ----
