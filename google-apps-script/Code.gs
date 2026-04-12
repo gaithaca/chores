@@ -4,9 +4,8 @@ const MEMBERS_SHEET = "Members";
 const HISTORY_SHEET = "History";
 const AVAIL_SHEET = "Availability";
 const CURRENT_CHORES_SHEET = "Current Assignments";
-// Using the provided webhook URL from search result [1]
+const CHORE_COUNT = "Counts"; // Defines the name of your counts sheet
 const DISCORD_WEBHOOK_URL = "";
-// Using the provided house name from search result [1]
 const HOUSE_NAME = "GA House";
 // Using the provided checklist link from search result [1]
 const CHECKLIST_LINK = "";
@@ -382,6 +381,7 @@ function sendNotificationsAndLogHistory() {
     let historySavedCount = 0;
     if (historyToSave.length > 0) {
         historySavedCount = saveHistoryFromData(ss, historyToSave);
+        incrementCountsFromHistoryRows(ss, historyToSave);
         normalizeChoreCounts(ss);
     } else {
         Logger.log("No actual assignments found in 'Current Assignments' to log to history.");
