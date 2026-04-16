@@ -139,6 +139,37 @@
                         Another</button>
                 </div>
             </div>
+
+            <!-- House Chore Status Board -->
+            <div class="step-card glass" id="house-status-board">
+                <div class="step-header">
+                    <span class="step-number">📊</span>
+                    <h2>House Chore Status</h2>
+                </div>
+                <p class="status-board-subtitle">See who's completed their chores this week.</p>
+                <div class="status-stats-row" id="status-stats-row">
+                    <div class="status-stat">
+                        <span class="status-stat-value" id="status-stat-done">0</span>
+                        <span class="status-stat-label">Done</span>
+                    </div>
+                    <div class="status-stat">
+                        <span class="status-stat-value status-stat-pending" id="status-stat-remaining">0</span>
+                        <span class="status-stat-label">Remaining</span>
+                    </div>
+                    <div class="status-stat">
+                        <span class="status-stat-value status-stat-late" id="status-stat-late-count">0</span>
+                        <span class="status-stat-label">Late</span>
+                    </div>
+                </div>
+                <div class="status-progress-container">
+                    <div class="status-progress-bar" id="status-progress-bar"></div>
+                </div>
+                <div class="status-board-list" id="status-board-list">
+                    <div class="status-board-loading">
+                        <span class="loading-spinner"></span> Loading status…
+                    </div>
+                </div>
+            </div>
         </div>
     </main>
 

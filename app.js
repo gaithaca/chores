@@ -489,6 +489,7 @@ function updateResidentCycleNav() {
 document.getElementById('resident-prev-week').addEventListener('click', () => {
     residentViewCycleId = shiftCycleId(residentViewCycleId, -7);
     updateResidentCycleNav();
+    loadHouseStatus();
     // If user is already identified, re-fetch their assignment for the new week
     if (currentUser) {
         stepChore.classList.add('hidden');
@@ -503,6 +504,7 @@ document.getElementById('resident-next-week').addEventListener('click', () => {
     if (residentViewCycleId >= currentCycleId) return;
     residentViewCycleId = shiftCycleId(residentViewCycleId, 7);
     updateResidentCycleNav();
+    loadHouseStatus();
     if (currentUser) {
         stepChore.classList.add('hidden');
         stepSubtasks.classList.add('hidden');
@@ -918,6 +920,8 @@ async function handleSubmitChore() {
         document.getElementById('step-netid').classList.add('hidden');
         stepConfirmation.classList.remove('hidden');
         showToast('Chore submitted successfully!', 'success');
+        // Refresh the status board to reflect the new submission
+        loadHouseStatus();
     } else {
         showToast('Error: ' + (result.error || 'Unknown error'), 'error');
         submitChoreBtn.disabled = false;
@@ -1683,6 +1687,223 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
     });
 });
 
+// ─── House Chore Status Board (Public) ────────────────
+
+async function loadHouseStatus() {
+    const viewCycleId = residentViewCycleId || currentCycleId;
+    if (!viewCycleId) return;
+
+    const listEl = document.getElementById('status-board-list');
+    if (!listEl) return;
+
+    // Show loading state
+    listEl.innerHTML = '<div class="status-board-loading"><span class="loading-spinner"></span> Loading status…</div>';
+
+    await appReady;
+
+    const [assignRes, subRes] = await Promise.all([
+        apiGet('getAssignments', { cycle_id: viewCycleId }),
+        apiGet('getSubmissions', { cycle_id: viewCycleId })
+    ]);
+
+    const assignments = assignRes.success ? assignRes.data : [];
+    const submissions = subRes.success ? subRes.data : [];
+
+    if (assignments.length === 0) {
+        listEl.innerHTML = '<div class="status-board-empty">No chore assignments found for this week.</div>';
+        document.getElementById('status-stat-done').textContent = '0';
+        document.getElementById('status-stat-remaining').textContent = '0';
+        document.getElementById('status-stat-late-count').textContent = '0';
+        document.getElementById('status-progress-bar').style.width = '0%';
+        // Update subtitle with cycle display
+        const subtitleEl = document.querySelector('.status-board-subtitle');
+        if (subtitleEl) subtitleEl.textContent = `${formatCycleDisplay(viewCycleId)} — No assignments found.`;
+        return;
+    }
+
+    // Build status per assigned member
+    const submittedNetIds = new Set(submissions.map(s => String(s.net_id).trim()));
+    const lateNetIds = new Set(
+        submissions.filter(s => parseInt(s.is_late) === 1).map(s => String(s.net_id).trim())
+    );
+
+    let doneCount = 0;
+    let lateCount = 0;
+    let pendingCount = 0;
+
+    // Sort: pending first, then late, then done
+    const sortedAssignments = [...assignments].sort((a, b) => {
+        const aSub = submittedNetIds.has(a.net_id);
+        const bSub = submittedNetIds.has(b.net_id);
+        const aLate = lateNetIds.has(a.net_id);
+        const bLate = lateNetIds.has(b.net_id);
+
+        // Pending first
+        if (!aSub && bSub) return -1;
+        if (aSub && !bSub) return 1;
+        // Late before on-time
+        if (aLate && !bLate) return -1;
+        if (!aLate && bLate) return 1;
+        // Alphabetical
+        return (a.member_name || '').localeCompare(b.member_name || '');
+    });
+
+    let html = '';
+
+    sortedAssignments.forEach(assignment => {
+        const member = findMember(assignment.net_id) || { name: assignment.member_name || assignment.net_id, net_id: assignment.net_id };
+        const chore = findChore(assignment.chore_id) || { name: assignment.chore_name || 'Unknown Chore' };
+        const hasSubmitted = submittedNetIds.has(assignment.net_id);
+        const isLate = lateNetIds.has(assignment.net_id);
+
+        // Get initials for avatar
+        const nameParts = member.name.split(' ');
+        const initials = nameParts.length >= 2
+            ? (nameParts[0][0] + nameParts[nameParts.length - 1][0])
+            : member.name.substring(0, 2);
+
+        let statusClass, badgeHtml;
+        if (hasSubmitted && isLate) {
+            statusClass = 'status-late-item';
+            badgeHtml = '<span class="badge badge-late">Late</span>';
+            lateCount++;
+        } else if (hasSubmitted) {
+            statusClass = 'status-done';
+            badgeHtml = '<span class="badge badge-submitted">✓ Done</span>';
+            doneCount++;
+        } else {
+            statusClass = 'status-pending-item';
+            badgeHtml = '<span class="badge badge-pending">Pending</span>';
+            pendingCount++;
+        }
+
+        // Make submitted items clickable to view subtasks
+        const clickAttr = hasSubmitted
+            ? `onclick="viewPublicSubmission('${assignment.net_id}', '${viewCycleId}')" style="cursor:pointer;"`
+            : `title="No submission yet"`;
+        const chevron = hasSubmitted
+            ? '<svg class="status-board-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>'
+            : '';
+
+        html += `
+        <div class="status-board-item ${statusClass}${hasSubmitted ? ' clickable' : ''}" ${clickAttr}>
+            <div class="status-board-avatar">${initials}</div>
+            <div class="status-board-info">
+                <div class="status-board-name">${member.name}</div>
+                <div class="status-board-chore">${chore.name}</div>
+            </div>
+            <div class="status-board-badge">${badgeHtml}${chevron}</div>
+        </div>`;
+    });
+
+    listEl.innerHTML = html;
+
+    // Update stats
+    document.getElementById('status-stat-done').textContent = doneCount;
+    document.getElementById('status-stat-remaining').textContent = pendingCount;
+    document.getElementById('status-stat-late-count').textContent = lateCount;
+
+    // Update progress bar
+    const total = assignments.length;
+    const pct = total > 0 ? ((doneCount + lateCount) / total) * 100 : 0;
+    document.getElementById('status-progress-bar').style.width = `${pct}%`;
+
+    // Update subtitle
+    const subtitleEl = document.querySelector('.status-board-subtitle');
+    if (subtitleEl) subtitleEl.textContent = `${formatCycleDisplay(viewCycleId)} — ${doneCount + lateCount} of ${total} submitted`;
+}
+
+// ─── Public Subtask Viewer (read-only, no manager controls) ──
+
+async function viewPublicSubmission(netId, cycleId) {
+    const subRes = await apiGet('getSubmissions', { cycle_id: cycleId });
+    const submissions = subRes.success ? subRes.data : [];
+    const userSubs = submissions
+        .filter(s => String(s.net_id).trim() === netId)
+        .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at));
+    if (userSubs.length === 0) return;
+
+    const user = findMember(netId);
+    const firstSub = userSubs[0];
+    const chore = findChore(firstSub.chore_id);
+    if (!chore) return;
+
+    document.getElementById('detail-modal-title').textContent =
+        `${user ? user.name : netId} — ${chore.name}`;
+
+    let html = '';
+
+    userSubs.forEach((submission, subIdx) => {
+        // Parse subtask completion data
+        let checked;
+        const rawChecked = submission.subtasks_checked_json || submission.subtasks_checked;
+        if (typeof rawChecked === 'string') {
+            try { checked = JSON.parse(rawChecked); } catch { checked = []; }
+        } else if (Array.isArray(rawChecked)) {
+            checked = rawChecked;
+        } else {
+            checked = [];
+        }
+
+        const checkedCount = checked.filter(Boolean).length;
+        const isLate = parseInt(submission.is_late) === 1;
+        const totalSubtasks = chore.subtasks ? chore.subtasks.length : checked.length;
+        const pct = totalSubtasks > 0 ? Math.round((checkedCount / totalSubtasks) * 100) : 0;
+
+        // Separator between multiple submissions
+        if (subIdx > 0) {
+            html += '<hr style="border:none; border-top:1px solid rgba(255,255,255,0.08); margin:20px 0;">';
+        }
+
+        // Submission header
+        const label = userSubs.length > 1 ? `Submission ${userSubs.length - subIdx} of ${userSubs.length}` : '';
+        html += `
+    <div style="margin-bottom:16px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+      ${label ? `<span style="font-weight:600; font-size:0.82rem; color:var(--text-secondary);">${label}</span>` : ''}
+      <span class="badge ${isLate ? 'badge-late' : 'badge-submitted'}">${isLate ? 'Late' : '✓ On Time'}</span>
+      <span style="color:var(--text-muted); font-size:0.82rem;">
+        Submitted: ${formatDate(submission.submitted_at)} · ${checkedCount}/${totalSubtasks} subtasks (${pct}%)
+      </span>
+    </div>
+
+    <div class="public-subtask-progress" style="margin-bottom:14px;">
+      <div style="height:6px; background:rgba(255,255,255,0.06); border-radius:10px; overflow:hidden;">
+        <div style="height:100%; width:${pct}%; background:linear-gradient(90deg, ${isLate ? 'var(--red)' : 'var(--green)'}, ${isLate ? '#ef4444' : '#16a34a'}); border-radius:10px; transition:width 0.4s ease;"></div>
+      </div>
+    </div>`;
+
+        // Subtask list (read-only)
+        if (chore.subtasks && chore.subtasks.length > 0) {
+            chore.subtasks.forEach((task, i) => {
+                const done = checked[i];
+                html += `
+        <div style="display:flex; align-items:flex-start; gap:10px; padding:10px 14px; margin-bottom:4px; border-radius:8px; background:${done ? 'rgba(34, 197, 94, 0.06)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${done ? 'var(--green-border)' : 'var(--border-subtle)'};">
+          <span style="font-size:1.1rem; flex-shrink:0; margin-top:1px;">${done ? '✅' : '⬜'}</span>
+          <span style="font-size:0.85rem; line-height:1.5; color:${done ? 'var(--text-primary)' : 'var(--text-muted)'}; ${done ? '' : 'opacity:0.7;'}">${task}</span>
+        </div>`;
+            });
+        }
+
+        // Show note if present
+        const note = submission.note || '';
+        if (note) {
+            html += `<div style="margin-top:12px; padding:12px 16px; background:rgba(255,255,255,0.04); border-radius:10px; border-left:3px solid var(--accent);">
+          <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); margin-bottom:4px;">📝 Note</div>
+          <div style="font-size:0.88rem; color:var(--text-secondary); font-style:italic;">${note}</div>
+        </div>`;
+        }
+    });
+
+    document.getElementById('detail-modal-body').innerHTML = html;
+    document.getElementById('detail-modal').classList.remove('hidden');
+}
+window.viewPublicSubmission = viewPublicSubmission;
+
 // ─── Start ────────────────────────────────────────────
 
-initApp();
+async function startApp() {
+    await initApp();
+    loadHouseStatus();
+}
+
+startApp();

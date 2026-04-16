@@ -1201,3 +1201,251 @@ tr.late-row td {
   font-size: 0.75rem;
   border-radius: 6px;
 }
+
+/* ─── House Chore Status Board ─── */
+.status-board-subtitle {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin-bottom: 16px;
+  font-style: italic;
+}
+
+.status-stats-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.status-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.status-stat-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--green);
+  letter-spacing: -0.5px;
+}
+
+.status-stat-value.status-stat-pending {
+  color: var(--yellow);
+}
+
+.status-stat-value.status-stat-late {
+  color: var(--red);
+}
+
+.status-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.status-progress-container {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.status-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), #16a34a);
+  border-radius: 10px;
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  width: 0%;
+}
+
+.status-board-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.status-board-loading {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.status-board-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  transition: var(--transition);
+}
+
+.status-board-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.status-board-item.status-done {
+  border-color: var(--green-border);
+  background: rgba(34, 197, 94, 0.04);
+}
+
+.status-board-item.status-late-item {
+  border-color: var(--red-border);
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.status-board-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-done .status-board-avatar {
+  background: var(--green-bg);
+  border: 1px solid var(--green-border);
+  color: var(--green);
+}
+
+.status-pending-item .status-board-avatar {
+  background: var(--yellow-bg);
+  border: 1px solid var(--yellow-border);
+  color: var(--yellow);
+}
+
+.status-late-item .status-board-avatar {
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  color: var(--red);
+}
+
+.status-unassigned-item .status-board-avatar {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.status-board-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.status-board-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-board-chore {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.status-board-badge {
+  flex-shrink: 0;
+}
+
+.status-board-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.status-board-item.clickable {
+  cursor: pointer;
+}
+
+.status-board-item.clickable:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateX(2px);
+}
+
+.status-board-item.status-done.clickable:hover {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: var(--green-border);
+}
+
+.status-board-item.status-late-item.clickable:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: var(--red-border);
+}
+
+.status-board-chevron {
+  color: var(--text-muted);
+  opacity: 0.4;
+  margin-left: 6px;
+  transition: var(--transition);
+  vertical-align: middle;
+}
+
+.status-board-item.clickable:hover .status-board-chevron {
+  opacity: 0.8;
+  transform: translateX(2px);
+}
+
+.status-board-badge {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+@media (max-width: 480px) {
+  .status-stats-row {
+    gap: 6px;
+  }
+
+  .status-stat {
+    padding: 8px 4px;
+  }
+
+  .status-stat-value {
+    font-size: 1.2rem;
+  }
+
+  .status-board-item {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .status-board-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 0.65rem;
+  }
+
+  .status-board-name {
+    font-size: 0.82rem;
+  }
+}
