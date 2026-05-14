@@ -302,7 +302,7 @@ function initDemoData() {
     appData.chores = DEMO_CHORES;
     appData.cycleInfo = {
         cycle_id: cycleId,
-        deadline: new Date('2026-03-02T08:00:00').toISOString(),
+        deadline: new Date('2026-03-02T07:00:00').toISOString(),
         now: new Date().toISOString()
     };
 
