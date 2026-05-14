@@ -22,7 +22,7 @@ A weekly chore tracking system for the Gamma Alpha cooperative house at Cornell 
 If you've already submitted during the **current week's cycle**, your previous subtasks are **pre-checked** so you don't start from scratch. Just check off any new items and submit again. Previous notes are also carried over. Each new week starts fresh.
 
 ### Deadlines
-- All chores are due by **Monday at 8:00 AM**
+- All chores are due by **Monday at 7:00 AM**
 - The deadline and countdown are displayed on your screen
 - Late submissions are automatically flagged and may result in a **$40 fine**
 
