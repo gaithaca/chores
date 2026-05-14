@@ -280,7 +280,7 @@ const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/YOUR_WEBHOOK";
 
 #### 4. Time Zone
 
-In the Apps Script editor, go to ⚙️ **Project Settings** and make sure the time zone is set to **`(GMT-05:00) Eastern Time`** so the Monday 8 AM deadline aligns with Cornell's time zone.
+In the Apps Script editor, go to ⚙️ **Project Settings** and make sure the time zone is set to **`(GMT-05:00) Eastern Time`** so the Monday 7 AM deadline aligns with Cornell's time zone.
 
 #### 5. Deploy
 
@@ -293,7 +293,7 @@ graph TD
     A["🗓️ Sunday 9 AM<br>Trigger runs assignChores()"] --> B["📋 Current Assignments<br>sheet is populated"]
     B --> C["📧 Manager reviews & sends<br>notifications (Discord + Email)"]
     C --> D["✅ Residents submit chores<br>via the website all week"]
-    D --> E{"⏰ Monday 8 AM<br>Deadline"}
+    D --> E{"⏰ Monday 7 AM<br>Deadline"}
     E -- "Before deadline" --> F["✅ On Time"]
     E -- "After deadline" --> G["🔴 Late — $40 Fine"]
     G -- "Extension request approved" --> H["✅ Extended deadline"]
