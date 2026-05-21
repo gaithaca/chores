@@ -514,7 +514,7 @@ document.getElementById('resident-next-week').addEventListener('click', () => {
     }
 });
 
-function updateCycleDisplay() {
+/*function updateCycleDisplay() {
     if (!appData.cycleInfo) return;
 
     const displayText = formatCycleDisplay(appData.cycleInfo.cycle_id);
@@ -531,7 +531,21 @@ function updateCycleDisplay() {
     updateCountdown(deadline);
     setInterval(() => updateCountdown(deadline), 60000);
 }
+*/
 
+function updateCycleDisplay() {
+    if (!appData.cycleInfo) return;
+
+    console.log("RAW DEADLINE:", appData.cycleInfo.deadline);
+
+    const deadline = new Date(appData.cycleInfo.deadline);
+
+    console.log("PARSED DATE:", deadline.toString());
+    console.log("PARSED ISO:", deadline.toISOString());
+
+    document.getElementById('resident-deadline-time').textContent =
+        formatDate(appData.cycleInfo.deadline);
+}
 function updateCountdown(deadline) {
     const remaining = getTimeRemaining(deadline);
 
