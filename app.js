@@ -302,7 +302,7 @@ function initDemoData() {
     appData.chores = DEMO_CHORES;
     appData.cycleInfo = {
         cycle_id: cycleId,
-        deadline: new Date('2026-03-02T12:00:00').toISOString(),
+        deadline: new Date('2026-03-02T07:00:00').toISOString(),
         now: new Date().toISOString()
     };
 
@@ -881,7 +881,7 @@ async function handleSubmitChore() {
             icon.textContent = '⚠️';
             title.textContent = 'Chore Submitted (Late)';
             title.style.color = 'var(--red)';
-            msg.innerHTML = 'Your submission was recorded <strong style="color:var(--red)">after the Monday 12:00 PM deadline</strong>. You may be subject to a <strong>$40 fine</strong>. Contact the House Manager if you have an extension.';
+            msg.innerHTML = 'Your submission was recorded <strong style="color:var(--red)">after the Monday 7:00 AM deadline</strong>. You may be subject to a <strong>$40 fine</strong>. Contact the House Manager if you have an extension.';
         } else {
             icon.textContent = '✅';
             title.textContent = 'Chore Submitted!';
