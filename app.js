@@ -6,7 +6,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
-const API_URL = 'https://script.google.com/macros/s/AKfycbxJcPYEdyH_sEbmvaX4NfxOdu_LaooUHSbB9zhs3V_Zvujv5MKL-s9iQQ4egyphAGXAlw/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbykf-oUBNUrpO2_G2ASbZFbwbpsezd8Q4rpMzDLhwi47vi0evotnavoNH03C6fATXFejw/exec';
 
 // Set to true for local testing without Google Sheets
 const DEMO_MODE = false;
