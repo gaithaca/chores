@@ -515,21 +515,33 @@ document.getElementById('resident-next-week').addEventListener('click', () => {
 });
 
 function updateCycleDisplay() {
-    console.trace("updateCycleDisplay called with:", appData.cycleInfo.deadline);
     if (!appData.cycleInfo) return;
+
+    console.trace("updateCycleDisplay called with:", appData.cycleInfo.deadline);
 
     const displayText = formatCycleDisplay(appData.cycleInfo.cycle_id);
     document.getElementById('resident-cycle-text').textContent = displayText;
     document.getElementById('dashboard-cycle-text').textContent = displayText;
 
     const deadline = new Date(appData.cycleInfo.deadline);
-    document.getElementById('deadline-time').textContent = formatDate(appData.cycleInfo.deadline);
 
-    // Also show deadline in resident view
+    // Keep dashboard using existing formatter (unchanged for now)
+    document.getElementById('deadline-time').textContent =
+        formatDate(appData.cycleInfo.deadline);
+
+    // ✅ FIXED: resident view uses consistent timezone formatting
     const resDeadline = document.getElementById('resident-deadline-time');
-    if (resDeadline) resDeadline.textContent = formatDate(appData.cycleInfo.deadline);
+    if (resDeadline) {
+        resDeadline.textContent = deadline.toLocaleString('en-US', {
+            weekday: 'long',
+            hour: 'numeric',
+            minute: '2-digit',
+            timeZone: 'America/New_York'
+        });
+    }
 
     updateCountdown(deadline);
+
     clearInterval(window.countdownInterval);
     window.countdownInterval = setInterval(() => updateCountdown(deadline), 60000);
 }
