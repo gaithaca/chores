@@ -11,6 +11,10 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbykf-oUBNUrpO2_G2ASbZFb
 // Set to true for local testing without Google Sheets
 const DEMO_MODE = false;
 
+// ---- TIME CONFIGURATION (must match Code.gs) ----
+const DEADLINE_HOUR = 7;           // Hour (0-23) when chores are due
+const DEADLINE_DISPLAY = '7:00 AM'; // Human-readable version for UI text
+
 // ─── App State ────────────────────────────────────────
 
 let appData = {
@@ -302,7 +306,7 @@ function initDemoData() {
     appData.chores = DEMO_CHORES;
     appData.cycleInfo = {
         cycle_id: cycleId,
-        deadline: new Date('2026-03-02T07:00:00').toISOString(),
+        deadline: new Date(`2026-03-02T${String(DEADLINE_HOUR).padStart(2,'0')}:00:00`).toISOString(),
         now: new Date().toISOString()
     };
 
@@ -431,6 +435,10 @@ function showToast(message, type = 'success') {
 
 document.getElementById('nav-resident').addEventListener('click', () => switchView('resident'));
 document.getElementById('nav-dashboard').addEventListener('click', () => switchView('dashboard'));
+
+// Populate deadline display text from config
+const deadlineDisplayEl = document.getElementById('deadline-display-text');
+if (deadlineDisplayEl) deadlineDisplayEl.textContent = DEADLINE_DISPLAY;
 
 function switchView(view) {
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -897,7 +905,7 @@ async function handleSubmitChore() {
             icon.textContent = '⚠️';
             title.textContent = 'Chore Submitted (Late)';
             title.style.color = 'var(--red)';
-            msg.innerHTML = 'Your submission was recorded <strong style="color:var(--red)">after the Monday 7:00 AM deadline</strong>. You may be subject to a <strong>$40 fine</strong>. Contact the House Manager if you have an extension.';
+            msg.innerHTML = `Your submission was recorded <strong style="color:var(--red)">after the Monday ${DEADLINE_DISPLAY} deadline</strong>. You may be subject to a <strong>$40 fine</strong>. Contact the House Manager if you have an extension.`;
         } else {
             icon.textContent = '✅';
             title.textContent = 'Chore Submitted!';

@@ -122,8 +122,7 @@ gamma-alpha-chores/
 ├── README.md
 └── google-apps-script/
     ├── WebApp.gs                     # API endpoints (deploy as web app)
-    ├── Code.gs                       # Assignment logic, notifications
-    └── ImprovedAssignment.gs         # Histogram-based chore assignment
+    └── Code.gs                       # Assignment logic, notifications, config
 ```
 
 ### Google Sheet Structure
@@ -139,9 +138,9 @@ erDiagram
         string role "resident / house_manager"
     }
     Chores {
-        string id
+        string id "Numeric ID (1-14+)"
         string choreName
-        string importance "imp / 2nd imp / 3rd imp"
+        int importance "1 (highest) / 2 / 3 (lowest)"
         string notes
     }
     Subtasks {
@@ -189,6 +188,13 @@ erDiagram
         string ChoreOrStatus
         string ChoreNotes
         string WeekOf
+        int ChoreCount
+    }
+    Counts {
+        string NetID "FK → Members.id"
+        int chore_1 "Normalized count"
+        int chore_2 "..."
+        int chore_N "One column per chore ID"
     }
 
     Members ||--o{ Submissions : submits
@@ -208,6 +214,7 @@ erDiagram
 | `Submissions` | `id` · `net_id` · `chore_id` · `subtasks_checked_json` · `submitted_at` · `cycle_id` · `is_late` · `note` · `manager_review_json` · `review_reason` |
 | `ExtensionRequests` | `id` · `net_id` · `cycle_id` · `reason` · `requested_date` · `status` · `requested_at` · `reviewed_by` · `reviewed_at` · `review_reason` |
 | `Fines` | `id` · `net_id` · `member_name` · `chore_name` · `fine_amount` · `cycle_id` · `granted_by` · `note` · `sent_at` |
+| `Counts` | `NetID` · `1` · `2` · `3` · ... (one column per chore ID, all starting at 0) |
 
 Existing sheets (`Chores`, `Members`, `History`, `Availability`, `Current Assignments`) remain unchanged.
 
@@ -299,9 +306,55 @@ graph TD
     G -- "Extension request approved" --> H["✅ Extended deadline"]
 ```
 
+### Changing the Deadline
+
+The chore deadline hour and all notification text are controlled by config constants. To change the deadline (e.g. from 7:00 AM to 10:00 AM), update **two files**:
+
+**1. Backend — `Code.gs` (lines 15-16):**
+```js
+const DEADLINE_HOUR = 10;            // Hour (0-23) when chores are due
+const DEADLINE_DISPLAY = "10:00 AM"; // Human-readable version for emails/Discord
+```
+
+These constants are automatically used by both `Code.gs` and `WebApp.gs` (they share the same namespace in Apps Script). They control:
+- When submissions are marked as "late"
+- Extension deadline times
+- Email and Discord notification text
+- The deadline shown in extension approval emails
+
+**2. Frontend — `app.js` (lines 14-15):**
+```js
+const DEADLINE_HOUR = 10;            // Must match Code.gs
+const DEADLINE_DISPLAY = '10:00 AM'; // Must match Code.gs
+```
+
+This controls:
+- The deadline time shown on the website
+- The late submission warning message
+
+> ⚠️ **Always keep both files in sync.** After changing, redeploy the Apps Script (Deploy → Manage Deployments → edit active deployment) and push the frontend to GitHub Pages.
+
+Other time-related constants in `Code.gs` you may want to adjust:
+
+| Constant | Default | Description |
+|----------|---------|-------------|
+| `TRIGGER_DAY` | `ScriptApp.WeekDay.SUNDAY` | Day the auto-assign trigger runs |
+| `TRIGGER_HOUR` | `9` | Hour the trigger fires |
+| `DUE_TEXT_FRIDAY` | `"Sunday night"` | Due date phrasing (Friday notifications) |
+| `DUE_TEXT_DEFAULT` | `"Monday 7:00 AM"` | Due date phrasing (other days) |
+| `CHECK_TEXT_FRIDAY` | `"Monday morning"` | When manager checks (Friday) |
+| `CHECK_TEXT_DEFAULT` | `"Monday afternoon"` | When manager checks (default) |
+| `EXT_DEADLINE_FRIDAY` | `"Saturday noon"` | Extension request cutoff (Friday) |
+| `EXT_DEADLINE_DEFAULT` | `"Sunday noon"` | Extension request cutoff (default) |
+
 ### Assignment Algorithm
 
-The chore assignment uses histogram-based global bipartite matching to ensure each resident does every chore an equal number of times over the long run.
+The chore assignment uses Robyn's priority-bucket algorithm with normalized counts:
+1. Chores are grouped by priority (1 → 2 → 3) and shuffled within each group
+2. For each chore, eligible people (not assigned in the last 2 weeks) are filtered
+3. Among eligible people, those with the lowest normalized count for that chore are selected
+4. Ties are broken by who has gone the longest without doing that chore (least recent)
+5. The `Counts` sheet tracks per-member per-chore counts and is normalized so the minimum is always 0
 
 ### Tech Stack
 

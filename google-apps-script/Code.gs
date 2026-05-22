@@ -7,10 +7,22 @@ const CURRENT_CHORES_SHEET = "Current Assignments";
 const CHORE_COUNT = "Counts"; // Defines the name of your counts sheet
 const DISCORD_WEBHOOK_URL = "";
 const HOUSE_NAME = "GA House";
-// Using the provided checklist link from search result [1]
 const CHECKLIST_LINK = "";
-// ---- NEW: Chore submission website ----
-const CHORE_SUBMIT_URL = "https://kushaangupta.github.io/chores/";
+const CHORE_SUBMIT_URL = "https://gaithaca.github.io/chores/";
+
+// ---- TIME CONFIGURATION ----
+// Change these to adjust deadlines, notification text, and triggers across the entire app.
+const DEADLINE_HOUR = 7;                          // Hour (0-23) when chores are due / extensions expire
+const DEADLINE_DISPLAY = "7:00 AM";               // Human-readable version shown in emails/Discord
+const TRIGGER_DAY = ScriptApp.WeekDay.SUNDAY;     // Day the weekly trigger runs
+const TRIGGER_HOUR = 9;                           // Hour (0-23) the weekly trigger fires
+// Notification phrasing (used in both email and Discord)
+const DUE_TEXT_FRIDAY = "Sunday night";            // Due date phrasing when notifications sent on Friday
+const DUE_TEXT_DEFAULT = "Monday " + DEADLINE_DISPLAY; // Due date phrasing for other days
+const CHECK_TEXT_FRIDAY = "Monday morning";        // When manager checks (Friday scenario)
+const CHECK_TEXT_DEFAULT = "Monday afternoon";     // When manager checks (default scenario)
+const EXT_DEADLINE_FRIDAY = "Saturday noon";      // Extension request deadline (Friday scenario)
+const EXT_DEADLINE_DEFAULT = "Sunday noon";       // Extension request deadline (default scenario)
 
 
 // ---- MENU ----
@@ -704,14 +716,14 @@ function sendEmailNotification(assignmentsToNotify, upcomingMondayDate) {
     const upcomingSunday = new Date(upcomingMondayDate.getTime() - (1 * 24 * 60 * 60 * 1000));
     let dueDateText, checkTimeText, extensionDeadlineText, subjectDueDateStr;
     if (dayOfWeek === 5) {
-        dueDateText = `this <strong>Sunday night (${formatDateWithOrdinal(upcomingSunday)})</strong>`;
-        checkTimeText = "I'll check for completion first thing <strong>Monday morning</strong>.";
-        extensionDeadlineText = "Need more time? <strong>Request an extension</strong> on the submission website by <strong>Saturday noon</strong>";
+        dueDateText = `this <strong>${DUE_TEXT_FRIDAY} (${formatDateWithOrdinal(upcomingSunday)})</strong>`;
+        checkTimeText = `I'll check for completion first thing <strong>${CHECK_TEXT_FRIDAY}</strong>.`;
+        extensionDeadlineText = `Need more time? <strong>Request an extension</strong> on the submission website by <strong>${EXT_DEADLINE_FRIDAY}</strong>`;
         subjectDueDateStr = `Sun, ${formatDateWithOrdinal(upcomingSunday)}`;
     } else {
-        dueDateText = `this <strong>Monday noon (${formatDateWithOrdinal(upcomingMondayDate)})</strong>`;
-        checkTimeText = "I will check for completion <strong>Monday afternoon</strong>.";
-        extensionDeadlineText = "Need more time? <strong>Request an extension</strong> on the submission website, latest by <strong>Sunday noon</strong>.";
+        dueDateText = `this <strong>${DUE_TEXT_DEFAULT} (${formatDateWithOrdinal(upcomingMondayDate)})</strong>`;
+        checkTimeText = `I will check for completion <strong>${CHECK_TEXT_DEFAULT}</strong>.`;
+        extensionDeadlineText = `Need more time? <strong>Request an extension</strong> on the submission website, latest by <strong>${EXT_DEADLINE_DEFAULT}</strong>.`;
         subjectDueDateStr = `Mon, ${formatDateWithOrdinal(upcomingMondayDate)}`;
     }
 
@@ -803,14 +815,14 @@ function sendDiscordNotification(assignmentsToNotify, upcomingMondayDate) {
     const upcomingSunday = new Date(upcomingMondayDate.getTime() - (1 * 24 * 60 * 60 * 1000));
     let dueDateTextDiscord, checkTimeTextDiscord, extensionDeadlineTextDiscord, subjectDueDateStrDiscord;
     if (dayOfWeek === 5) {
-        dueDateTextDiscord = `due this **Sunday night (${formatDateWithOrdinal(upcomingSunday)})**`;
-        checkTimeTextDiscord = "Completion check: **Monday morning**.";
-        extensionDeadlineTextDiscord = "Need more time? Request an extension on the website by **Saturday noon**.";
+        dueDateTextDiscord = `due this **${DUE_TEXT_FRIDAY} (${formatDateWithOrdinal(upcomingSunday)})**`;
+        checkTimeTextDiscord = `Completion check: **${CHECK_TEXT_FRIDAY}**.`;
+        extensionDeadlineTextDiscord = `Need more time? Request an extension on the website by **${EXT_DEADLINE_FRIDAY}**.`;
         subjectDueDateStrDiscord = `Sun, ${formatDateWithOrdinal(upcomingSunday)}`;
     } else {
-        dueDateTextDiscord = `due this **Monday noon (${formatDateWithOrdinal(upcomingMondayDate)})**`;
-        checkTimeTextDiscord = "Completion check will be done by my underling* @house-manager*: **Monday afternoon**.";
-        extensionDeadlineTextDiscord = "Need more time? Request an extension on the website by **Sunday noon**.";
+        dueDateTextDiscord = `due this **${DUE_TEXT_DEFAULT} (${formatDateWithOrdinal(upcomingMondayDate)})**`;
+        checkTimeTextDiscord = `Completion check will be done by my underling* @house-manager*: **${CHECK_TEXT_DEFAULT}**.`;
+        extensionDeadlineTextDiscord = `Need more time? Request an extension on the website by **${EXT_DEADLINE_DEFAULT}**.`;
         subjectDueDateStrDiscord = `Mon, ${formatDateWithOrdinal(upcomingMondayDate)}`;
     }
 
@@ -890,8 +902,8 @@ function formatDateWithOrdinal(date) {
 
 // ---- TRIGGER CREATION ----
 /**
- * Creates or updates a time-driven trigger to run 'assignChores' automatically
- * every Sunday morning around 9 AM.
+ * Creates or updates a time-driven trigger to run 'assignChores' automatically.
+ * Uses TRIGGER_DAY and TRIGGER_HOUR from the configuration block.
  */
 function createWeeklyTrigger() {
     const functionName = 'assignChores';
@@ -909,14 +921,14 @@ function createWeeklyTrigger() {
     try {
         ScriptApp.newTrigger(functionName)
             .timeBased()
-            .onWeekDay(ScriptApp.WeekDay.SUNDAY)
-            .atHour(9)
+            .onWeekDay(TRIGGER_DAY)
+            .atHour(TRIGGER_HOUR)
             .inTimezone(Session.getScriptTimeZone())
             .create();
 
         const message = triggerDeleted
-            ? `Existing trigger for '${functionName}' deleted. New weekly trigger created successfully to run every Sunday around 9 AM.`
-            : `New weekly trigger created successfully for '${functionName}' to run every Sunday around 9 AM.`;
+            ? `Existing trigger for '${functionName}' deleted. New weekly trigger created to run around ${TRIGGER_HOUR}:00.`
+            : `New weekly trigger created for '${functionName}' to run around ${TRIGGER_HOUR}:00.`;
         SpreadsheetApp.getUi().alert(message);
         Logger.log(`Created new weekly trigger for ${functionName}.`);
     } catch (e) {

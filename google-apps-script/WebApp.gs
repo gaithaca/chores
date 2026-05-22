@@ -529,7 +529,7 @@ function fetchSheetRows_(ss, sheetName) {
 /**
  * Returns current cycle info: {cycle_id, deadline, now}
  * cycle_id = the "Week Of" date from Current Assignments (yyyy-MM-dd)
- * deadline = that date + 7 days, 8:00 AM (next Monday morning)
+ * deadline = that date at DEADLINE_HOUR (configured in Code.gs)
  */
 function computeCycleInfo_(ss) {
   const now = new Date();
@@ -559,10 +559,10 @@ function computeCycleInfo_(ss) {
     assignmentWeek = Utilities.formatDate(monday, Session.getScriptTimeZone(), "yyyy-MM-dd");
   }
 
-  // Deadline = "Week Of" date at 8:00 AM
+  // Deadline = "Week Of" date at DEADLINE_HOUR
   const weekOfDate = new Date(assignmentWeek + "T00:00:00");
   const deadlineDate = new Date(weekOfDate);
-  deadlineDate.setHours(8, 0, 0, 0);
+  deadlineDate.setHours(DEADLINE_HOUR, 0, 0, 0);
 
   return {
     cycle_id: assignmentWeek,
@@ -580,10 +580,10 @@ function handleSubmitChore_(ss, body) {
   const now = new Date();
   const cycleId = body.cycle_id;
 
-  // Compute deadline — same as the week-of date at 8 AM
+  // Compute deadline — same as the week-of date at DEADLINE_HOUR
   const weekOfDate = new Date(cycleId + "T00:00:00");
   const deadline = new Date(weekOfDate);
-  deadline.setHours(8, 0, 0, 0);
+  deadline.setHours(DEADLINE_HOUR, 0, 0, 0);
 
   // Check if late
   let isLate = 0;
@@ -604,9 +604,9 @@ function handleSubmitChore_(ss, body) {
           if (rawExtDate instanceof Date) {
             extDeadline = new Date(rawExtDate);
           } else {
-            extDeadline = new Date(String(rawExtDate).trim() + 'T08:00:00');
+            extDeadline = new Date(String(rawExtDate).trim() + 'T00:00:00');
           }
-          extDeadline.setHours(8, 0, 0, 0);
+          extDeadline.setHours(DEADLINE_HOUR, 0, 0, 0);
           if (!isNaN(extDeadline.getTime()) && extDeadline > now) {
             isLate = 0;
             break;
@@ -701,7 +701,7 @@ function handleGrantExtension_(ss, body) {
         '<div style="background:#fff;border:1px solid #e9ecef;border-top:none;padding:20px;border-radius:0 0 12px 12px;">' +
           '<div style="margin-bottom:16px;padding:12px 16px;border-radius:8px;background:#f0fdf4;border-left:4px solid #22c55e;">' +
             '<span style="font-weight:600;color:#22c55e;font-size:18px;">✅ Approved</span>' +
-            (deadlineDisplay ? '<div style="margin-top:6px;color:#495057;">Your new deadline is <strong>' + deadlineDisplay + ' at 8:00 AM</strong></div>' : '') +
+            (deadlineDisplay ? '<div style="margin-top:6px;color:#495057;">Your new deadline is <strong>' + deadlineDisplay + ' at ' + DEADLINE_DISPLAY + '</strong></div>' : '') +
           '</div>' +
           '<div style="margin-bottom:12px;"><span style="font-weight:600;">Reason:</span> ' + reason + '</div>' +
           '<div style="margin-top:20px;font-size:13px;color:#6c757d;">Granted by ' + grantedBy + ' · ΓΑ Chore Tracker</div>' +
@@ -806,7 +806,7 @@ function handleApproveExtension_(ss, body) {
   if (decision === 'approved') {
     var extDeadline = body.extended_deadline || '';
     if (!extDeadline) {
-      // Use the resident's requested_date, set to 8AM
+      // Use the resident's requested_date, set to DEADLINE_HOUR
       var rawReqDate = reqRow[4];
       if (rawReqDate) {
         var d;
@@ -814,10 +814,10 @@ function handleApproveExtension_(ss, body) {
           d = new Date(rawReqDate);
         } else {
           // It's a string like "2026-03-01"
-          d = new Date(String(rawReqDate).trim() + 'T08:00:00');
+          d = new Date(String(rawReqDate).trim() + 'T00:00:00');
         }
         if (!isNaN(d.getTime())) {
-          d.setHours(8, 0, 0, 0);
+          d.setHours(DEADLINE_HOUR, 0, 0, 0);
           extDeadline = d.toISOString();
         }
       }
@@ -831,7 +831,7 @@ function handleApproveExtension_(ss, body) {
           cycleDate = new Date(String(rawCycleDate).trim() + 'T00:00:00');
         }
         cycleDate.setDate(cycleDate.getDate() + 2);
-        cycleDate.setHours(8, 0, 0, 0);
+        cycleDate.setHours(DEADLINE_HOUR, 0, 0, 0);
         extDeadline = cycleDate.toISOString();
       }
     }
@@ -873,7 +873,7 @@ function handleApproveExtension_(ss, body) {
         '<div style="background:#fff;border:1px solid #e9ecef;border-top:none;padding:20px;border-radius:0 0 12px 12px;">' +
           '<div style="margin-bottom:16px;padding:12px 16px;border-radius:8px;background:' + (isApproved ? '#f0fdf4' : '#fef2f2') + ';border-left:4px solid ' + statusColor + ';">' +
             '<span style="font-weight:600;color:' + statusColor + ';font-size:18px;">' + statusIcon + ' ' + statusLabel + '</span>' +
-            (isApproved && reqDateDisplay ? '<div style="margin-top:6px;color:#495057;">Your new deadline is <strong>' + reqDateDisplay + ' at 8:00 AM</strong></div>' : '') +
+            (isApproved && reqDateDisplay ? '<div style="margin-top:6px;color:#495057;">Your new deadline is <strong>' + reqDateDisplay + ' at ' + DEADLINE_DISPLAY + '</strong></div>' : '') +
           '</div>' +
           '<div style="margin-bottom:12px;"><span style="font-weight:600;">Your reason:</span> "' + reason + '"</div>' +
           (reqDateDisplay ? '<div style="margin-bottom:12px;"><span style="font-weight:600;">Requested until:</span> ' + reqDateDisplay + '</div>' : '') +
