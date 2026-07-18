@@ -1146,7 +1146,6 @@ async function loadDashboard(cycleId) {
       <td class="actions-cell">
         ${latestSub ? `<button class="btn btn-view" onclick="viewSubmission('${user.net_id}', '${cycleId}')">Review</button>` : (assignment ? `<button class="btn btn-view btn-outline" onclick="reviewUnsubmitted('${user.net_id}', '${assignment.chore_id}', '${cycleId}')">Review</button>` : '')}
         ${assignment && !extension ? `<button class="btn btn-extend" onclick="openExtensionModal('${user.net_id}', '${user.name}', '${cycleId}')">Extend</button>` : ''}
-        ${assignment ? `<button class="btn btn-danger btn-small" onclick="sendFineNotification('${user.net_id}', '${user.name.replace(/'/g, "\\'")}', '${chore ? chore.name.replace(/'/g, "\\'") : ''}', '${cycleId}', this)">Fine $40</button>` : ''}
         ${assignment ? `
             <button class="btn btn-danger btn-small" 
                 onclick="sendFineNotification('${user.net_id}', '${user.name.replace(/'/g, "\\'")}', '${chore ? chore.name.replace(/'/g, "\\'") : ''}', '${cycleId}', 20, this)">
