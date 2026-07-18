@@ -1151,7 +1151,6 @@ async function loadDashboard(cycleId) {
                 onclick="sendFineNotification('${user.net_id}', '${user.name.replace(/'/g, "\\'")}', '${chore ? chore.name.replace(/'/g, "\\'") : ''}', '${cycleId}', 20, this)">
                 Fine $20
             </button>
-
             <button class="btn btn-danger btn-small"
                 onclick="sendFineNotification('${user.net_id}', '${user.name.replace(/'/g, "\\'")}', '${chore ? chore.name.replace(/'/g, "\\'") : ''}', '${cycleId}', 40, this)">
                 Fine $40
