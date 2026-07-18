@@ -1621,7 +1621,16 @@ async function reviewUnsubmitted(netId, choreId, cycleId) {
       <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
         <button class="btn btn-primary btn-small" id="save-review-btn" onclick="saveUnsubmittedReview('${netId}', '${choreId}', '${cycleId}', ${chore.subtasks.length})">💾 Save Review</button>
         <button class="btn btn-email btn-small" id="email-unsub-review-btn" onclick="emailUnsubmittedReview('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', ${chore.subtasks.length}, this)">📧 Email Review</button>
-        <button class="btn btn-danger btn-small" onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', this)">Fine $40</button>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="btn btn-danger btn-small"
+                onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', 20, this)">
+                Fine $20
+            </button>
+            <button class="btn btn-danger btn-small"
+                onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', 40, this)">
+                Fine $40
+            </button>
+        </div>
         <span id="review-save-status" style="font-size:0.82rem;"></span>
       </div>
     </div>`;
