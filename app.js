@@ -905,7 +905,7 @@ async function handleSubmitChore() {
             icon.textContent = '⚠️';
             title.textContent = 'Chore Submitted (Late)';
             title.style.color = 'var(--red)';
-            msg.innerHTML = `Your submission was recorded <strong style="color:var(--red)">after the Monday ${DEADLINE_DISPLAY} deadline</strong>. You may be subject to a <strong>$40 fine</strong>. Contact the House Manager if you have an extension.`;
+            msg.innerHTML = `Your submission was recorded <strong style="color:var(--red)">after the Monday ${DEADLINE_DISPLAY} deadline</strong>. You may be subject to a <strong>$20 or $40 fine</strong>. Contact the House Manager if you have an extension.`;
         } else {
             icon.textContent = '✅';
             title.textContent = 'Chore Submitted!';
@@ -1119,7 +1119,7 @@ async function loadDashboard(cycleId) {
         } else if (latestSub) {
             const isLate = parseInt(latestSub.is_late) === 1;
             statusBadge = isLate
-                ? '<span class="badge badge-late">Late</span><span class="fine-badge">$40 Fine</span>'
+                ? '<span class="badge badge-late">Late</span><span class="fine-badge">Fine Issued</span>'
                 : '<span class="badge badge-submitted">✓ On Time</span>';
             if (userSubs.length > 1) {
                 statusBadge += `<span class="badge" style="background:var(--accent);color:#fff;font-size:0.65rem;margin-left:4px;">${userSubs.length}×</span>`;
@@ -1147,6 +1147,17 @@ async function loadDashboard(cycleId) {
         ${latestSub ? `<button class="btn btn-view" onclick="viewSubmission('${user.net_id}', '${cycleId}')">Review</button>` : (assignment ? `<button class="btn btn-view btn-outline" onclick="reviewUnsubmitted('${user.net_id}', '${assignment.chore_id}', '${cycleId}')">Review</button>` : '')}
         ${assignment && !extension ? `<button class="btn btn-extend" onclick="openExtensionModal('${user.net_id}', '${user.name}', '${cycleId}')">Extend</button>` : ''}
         ${assignment ? `<button class="btn btn-danger btn-small" onclick="sendFineNotification('${user.net_id}', '${user.name.replace(/'/g, "\\'")}', '${chore ? chore.name.replace(/'/g, "\\'") : ''}', '${cycleId}', this)">Fine $40</button>` : ''}
+        ${assignment ? `
+            <button class="btn btn-danger btn-small" 
+                onclick="sendFineNotification('${user.net_id}', '${user.name.replace(/'/g, "\\'")}', '${chore ? chore.name.replace(/'/g, "\\'") : ''}', '${cycleId}', 20, this)">
+                Fine $20
+            </button>
+
+            <button class="btn btn-danger btn-small"
+                onclick="sendFineNotification('${user.net_id}', '${user.name.replace(/'/g, "\\'")}', '${chore ? chore.name.replace(/'/g, "\\'") : ''}', '${cycleId}', 40, this)">
+                Fine $40
+            </button>
+        ` : ''}
       </td>`;
         tbody.appendChild(tr);
     });
@@ -1154,8 +1165,10 @@ async function loadDashboard(cycleId) {
 
 // ─── Fine Notification ────────────────────────────────
 
-async function sendFineNotification(netId, memberName, choreName, cycleId, btnEl) {
-    const note = prompt(`Fine $40 for ${memberName} (${netId}) — "${choreName}"\n\nEnter justification note:`);
+async function sendFineNotification(netId, memberName, choreName, cycleId, amount, btnEl) {
+    const note = prompt(
+        `Fine $${amount} for ${memberName} (${netId}) — "${choreName}"\n\nEnter justification note:`
+    );
     if (note === null) return;  // user cancelled
 
     btnEl.disabled = true;
@@ -1165,24 +1178,25 @@ async function sendFineNotification(netId, memberName, choreName, cycleId, btnEl
         net_id: netId,
         member_name: memberName,
         chore_name: choreName,
-        fine_amount: 40,
+        fine_amount: amount,
         cycle_id: cycleId,
         granted_by: managerNetId,
         note: note || ''
     });
 
     if (res.success) {
-        btnEl.innerHTML = '✓ Sent';
+        btnEl.innerHTML = `✓ $${amount} Sent`;
         btnEl.classList.remove('btn-danger');
         btnEl.classList.add('btn-outline');
         btnEl.style.color = 'var(--green)';
-        showToast(`Fine notification sent for ${memberName}`, 'success');
+        showToast(`$${amount} fine notification sent for ${memberName}`, 'success');
     } else {
         btnEl.disabled = false;
-        btnEl.innerHTML = 'Fine $40';
+        btnEl.innerHTML = `Fine $${amount}`;
         showToast(res.error || 'Failed to send fine', 'error');
     }
 }
+
 window.sendFineNotification = sendFineNotification;
 
 // ─── Extension Requests Panel ─────────────────────────
@@ -1428,7 +1442,8 @@ async function viewSubmission(netId, cycleId) {
       <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
         <button class="btn btn-primary btn-small" id="save-review-btn" onclick="saveManagerReview(${submission.id}, ${chore.subtasks.length})">💾 Save Review</button>
         <button class="btn btn-email btn-small" onclick="sendReviewEmail('${netId}', '${escapedName}', '${escapedChore}', ${submission.id}, ${chore.subtasks.length}, '${cycleId}', this)">📧 Email Review</button>
-        <button class="btn btn-danger btn-small" onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', this)">Fine $40</button>
+        <button class="btn btn-danger btn-small" onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', 20, this)">Fine $20</button>
+        <button class="btn btn-danger btn-small" onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', 40, this)">Fine $40</button>
         <span id="review-save-status" style="font-size:0.82rem;"></span>
       </div>
     </div>`;
@@ -1520,8 +1535,12 @@ async function sendReviewEmail(netId, memberName, choreName, submissionId, subta
 }
 window.sendReviewEmail = sendReviewEmail;
 
-async function modalFine(netId, memberName, choreName, cycleId, btnEl) {
-    const note = prompt(`Fine $40 for ${memberName} — "${choreName}"\n\nReason (e.g. "chore not actually completed"):`, 'Chore not completed satisfactorily');
+
+async function modalFine(netId, memberName, choreName, cycleId, amount, btnEl) {
+    const note = prompt(
+        `Fine $${amount} for ${memberName} — "${choreName}"\n\nReason (e.g. "chore not actually completed"):`,
+        'Chore not completed satisfactorily'
+    );
     if (note === null) return;
 
     btnEl.disabled = true;
@@ -1531,20 +1550,20 @@ async function modalFine(netId, memberName, choreName, cycleId, btnEl) {
         net_id: netId,
         member_name: memberName,
         chore_name: choreName,
-        fine_amount: 40,
+        fine_amount: amount,
         cycle_id: cycleId,
         granted_by: managerNetId,
         note: note || ''
     });
 
     if (res.success) {
-        btnEl.innerHTML = '✓ Fine Sent';
+        btnEl.innerHTML = `✓ $${amount} Fine Sent`;
         btnEl.classList.remove('btn-danger');
         btnEl.style.cssText = 'background:var(--green);color:#fff;pointer-events:none;';
-        showToast(`$40 fine sent to ${memberName}`, 'success');
+        showToast(`$${amount} fine sent to ${memberName}`, 'success');
     } else {
         btnEl.disabled = false;
-        btnEl.innerHTML = 'Fine $40';
+        btnEl.innerHTML = `Fine $${amount}`;
         showToast(res.error || 'Failed to send fine', 'error');
     }
 }
