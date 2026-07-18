@@ -1618,20 +1618,28 @@ async function reviewUnsubmitted(netId, choreId, cycleId) {
       <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:6px;">Manager Review Notes (optional)</label>
       <textarea id="review-reason-input" rows="2" placeholder="e.g. Chore was not completed at all..." style="width:100%; margin-bottom:10px; font-size:0.85rem;"></textarea>
       <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-        <button class="btn btn-primary btn-small" id="save-review-btn" onclick="saveUnsubmittedReview('${netId}', '${choreId}', '${cycleId}', ${chore.subtasks.length})">💾 Save Review</button>
-        <button class="btn btn-email btn-small" id="email-unsub-review-btn" onclick="emailUnsubmittedReview('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', ${chore.subtasks.length}, this)">📧 Email Review</button>
-        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-            <button class="btn btn-danger btn-small"
-                onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', 20, this)">
-                Fine $20
+            <button class="btn btn-primary btn-small" id="save-review-btn" onclick="saveUnsubmittedReview('${netId}', '${choreId}', '${cycleId}', ${chore.subtasks.length})">
+                💾 Save Review
             </button>
-            <button class="btn btn-danger btn-small"
-                onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', 40, this)">
-                Fine $40
+        
+            <button class="btn btn-email btn-small" id="email-unsub-review-btn" onclick="emailUnsubmittedReview('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', ${chore.subtasks.length}, this)">
+                📧 Email Review
             </button>
+        
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button class="btn btn-danger btn-small"
+                    onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', 20, this)">
+                    Fine $20
+                </button>
+        
+                <button class="btn btn-danger btn-small"
+                    onclick="modalFine('${netId}', '${escapedName}', '${escapedChore}', '${cycleId}', 40, this)">
+                    Fine $40
+                </button>
+            </div>
+        
+            <span id="review-save-status" style="font-size:0.82rem; color:var(--green);"></span>
         </div>
-        <span id="review-save-status" style="font-size:0.82rem;"></span>
-      </div>
     </div>`;
 
     document.getElementById('detail-modal-body').innerHTML = html;
@@ -1664,10 +1672,15 @@ async function saveUnsubmittedReview(netId, choreId, cycleId, subtaskCount) {
     });
 
     if (res.success) {
-        btn.innerHTML = '💾 Save Review';
-        btn.disabled = false;
-        statusEl.innerHTML = '<span style="color:var(--green);">✓ Review saved</span>';
+        btn.innerHTML = '✓ Review Saved';
+        btn.disabled = true;
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-outline');
+
+        statusEl.innerHTML = '<span style="color:var(--green);">✓ Reviewed</span>';
+
         showToast('Review saved successfully', 'success');
+
         // Reload dashboard so the row now shows as submitted
         setTimeout(() => loadDashboard(viewingCycleId), 1500);
     } else {
