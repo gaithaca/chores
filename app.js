@@ -418,6 +418,7 @@ function demoPost(action, body) {
             return { success: true, data: { submission_id: sub.id } };
         }
         case 'reviewSubmission': {
+            console.log('reviewSubmission fired', body);
             const sub = demoSubmissions.find(s => s.id === body.submission_id);
         
             if (sub) {
