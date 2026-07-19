@@ -1142,6 +1142,7 @@ async function loadDashboard(cycleId) {
             .filter(s => String(s.net_id).trim() === user.net_id)
             .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at));
         const latestSub = userSubs.length > 0 ? userSubs[0] : null;
+        console.log('TABLE LATEST SUB:', latestSub);
         const extension = extensions.find(e => String(e.net_id).trim() === user.net_id);
         // Use findChore for full chore data, but fall back to assignment's chore_name from History
         const chore = assignment ? (findChore(assignment.chore_id) || { name: assignment.chore_name, chore_id: assignment.chore_id, subtasks: [] }) : null;
