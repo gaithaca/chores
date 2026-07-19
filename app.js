@@ -214,6 +214,7 @@ const DEMO_MEMBERS = [
 
 let demoAssignments = [];
 let demoSubmissions = [];
+let demoFines = [];
 let demoExtensions = [];
 
 // ─── Date Utilities ───────────────────────────────────
@@ -415,8 +416,24 @@ function demoPost(action, body) {
             return { success: true, data: { submission_id: body.submission_id } };
         case 'sendReviewEmail':
             return { success: true, data: { sent_to: 'demo@example.com' } };
-        case 'sendFine':
-            return { success: true, data: {} };
+        case 'sendFine': {
+            const fine = {
+                id: demoFines.length + 1,
+                net_id: body.net_id,
+                cycle_id: body.cycle_id,
+                amount: body.fine_amount,
+                issued_by: body.granted_by,
+                issued_at: new Date().toISOString(),
+                note: body.note || ''
+            };
+        
+            demoFines.push(fine);
+        
+            return {
+                success: true,
+                data: fine
+            };
+        }
         default:
             return { success: false, error: 'Unknown action' };
     }
@@ -1060,6 +1077,10 @@ async function loadDashboard(cycleId) {
             granted_by: r.reviewed_by || '',
             reason: r.reason || ''
         }));
+    const fine = demoFines.find(f =>
+        f.net_id === user.net_id &&
+        f.cycle_id === cycleId
+    );
 
     // Render pending extension requests panel
     renderExtensionRequests(extRequests, cycleId);
