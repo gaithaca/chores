@@ -1159,15 +1159,26 @@ async function loadDashboard(cycleId) {
         } else if (latestSub) {
             console.log('Latest submission:', latestSub, 'Reviewed:', latestSub.reviewed);
             const isLate = parseInt(latestSub.is_late) === 1;
-
+            let isReviewed = false;
+            if (latestSub.manager_review_json) {
+                try {
+                    const review = JSON.parse(latestSub.manager_review_json);
+                    isReviewed = Array.isArray(review) && review.length > 0;
+                } catch (e) {
+                    isReviewed = false;
+                }
+            }
             statusBadge = isLate
                 ? '<span class="badge badge-late">Late</span>'
                 : '<span class="badge badge-submitted">✓ On Time</span>';
+            
 
             if (latestSub.reviewed) {
                 statusBadge += '<span class="badge badge-submitted">✓ Reviewed</span>';
             }
-            
+            if (isReviewed) {
+                statusBadge += '<span class="badge" style="background:var(--accent);color:#fff;">✓ Reviewed</span>';
+            }
             if (fine) {
                 statusBadge += `<span class="fine-badge">$${fine.amount} Fine</span>`;
             }
