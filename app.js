@@ -422,6 +422,9 @@ function demoPost(action, body) {
         
             if (sub) {
                 sub.reviewed = true;
+                console.log('Review updated:', sub);
+            } else {
+                console.log('Could not find submission:', body.submission_id);
             }
         
             return {
