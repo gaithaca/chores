@@ -1153,7 +1153,7 @@ async function loadDashboard(cycleId) {
             statusBadge = '<span class="badge badge-unassigned">Unassigned</span>';
             timeCell = '—';
         } else if (latestSub) {
-            console.log('Latest submission:', latestSub);
+            console.log('Latest submission:', latestSub, 'Reviewed:', latestSub.reviewed);
             const isLate = parseInt(latestSub.is_late) === 1;
 
             statusBadge = isLate
