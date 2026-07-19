@@ -402,9 +402,14 @@ function demoPost(action, body) {
         case 'reviewUnsubmitted': {
             const now = new Date();
             const sub = {
-                id: demoSubmissions.length + 1, net_id: body.net_id, chore_id: body.chore_id,
+                id: demoSubmissions.length + 1,
+                net_id: body.net_id,
+                chore_id: body.chore_id,
                 subtasks_checked_json: JSON.stringify(new Array((body.review_checks || []).length).fill(false)),
-                submitted_at: now.toISOString(), cycle_id: body.cycle_id, is_late: 1,
+                submitted_at: now.toISOString(),
+                cycle_id: body.cycle_id,
+                is_late: 1,
+                reviewed: true,
                 note: '[Manager review — no resident submission]',
                 manager_review_json: JSON.stringify(body.review_checks || []),
                 review_reason: (body.reviewed_by ? '[' + body.reviewed_by + '] ' : '') + (body.review_reason || '')
@@ -412,8 +417,18 @@ function demoPost(action, body) {
             demoSubmissions.push(sub);
             return { success: true, data: { submission_id: sub.id } };
         }
-        case 'reviewSubmission':
-            return { success: true, data: { submission_id: body.submission_id } };
+        case 'reviewSubmission': {
+            const sub = demoSubmissions.find(s => s.id === body.submission_id);
+        
+            if (sub) {
+                sub.reviewed = true;
+            }
+        
+            return {
+                success: true,
+                data: { submission_id: body.submission_id }
+            };
+        }
         case 'sendReviewEmail':
             return { success: true, data: { sent_to: 'demo@example.com' } };
         case 'sendFine': {
@@ -1143,6 +1158,10 @@ async function loadDashboard(cycleId) {
             statusBadge = isLate
                 ? '<span class="badge badge-late">Late</span>'
                 : '<span class="badge badge-submitted">✓ On Time</span>';
+
+            if (latestSub.reviewed) {
+                statusBadge += '<span class="badge badge-submitted">✓ Reviewed</span>';
+            }
             
             if (fine) {
                 statusBadge += `<span class="fine-badge">$${fine.amount} Fine</span>`;
