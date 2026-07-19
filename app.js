@@ -1139,10 +1139,14 @@ async function loadDashboard(cycleId) {
             timeCell = '—';
         } else if (latestSub) {
             const isLate = parseInt(latestSub.is_late) === 1;
-        
+
             statusBadge = isLate
                 ? '<span class="badge badge-late">Late</span>'
                 : '<span class="badge badge-submitted">✓ On Time</span>';
+            
+            if (fine) {
+                statusBadge += `<span class="fine-badge">$${fine.amount} Fine</span>`;
+            }
         
             if (userSubs.length > 1) {
                 statusBadge += `<span class="badge" style="background:var(--accent);color:#fff;font-size:0.65rem;margin-left:4px;">${userSubs.length}×</span>`;
